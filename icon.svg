@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="gatekeeper-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9333EA"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="gold-star" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#gatekeeper-grad)"/>
+  <!-- Wizard Hat Brim -->
+  <ellipse cx="256" cy="340" rx="170" ry="32" fill="#3B0764"/>
+  <!-- Wizard Hat Cone -->
+  <path d="M 256 90 L 370 340 L 142 340 Z" fill="#581C87"/>
+  <path d="M 256 90 Q 300 220 370 340 L 256 340 Z" fill="#6B21A8"/>
+  <!-- Gold Crescent Moon on Hat -->
+  <path d="M 250 170 A 32 32 0 1 0 282 226 A 26 26 0 1 1 250 170 Z" fill="url(#gold-star)"/>
+  <!-- Hat Band -->
+  <path d="M 172 318 Q 256 338 340 318 L 348 340 Q 256 360 164 340 Z" fill="#7E22CE"/>
+  <!-- Little Stars -->
+  <polygon points="210,270 214,280 225,281 216,288 219,298 210,292 201,298 204,288 195,281 206,280" fill="url(#gold-star)"/>
+  <polygon points="300,275 304,285 315,286 306,293 309,303 300,297 291,303 294,293 285,286 296,285" fill="url(#gold-star)"/>
+  <polygon points="256,120 259,128 268,129 261,135 263,144 256,139 249,144 251,135 244,129 253,128" fill="url(#gold-star)"/>
+  <!-- Gatekeeper Wizard Staff Head -->
+  <circle cx="400" cy="230" r="26" fill="none" stroke="#D97706" stroke-width="14"/>
+  <path d="M 400 256 L 400 450" stroke="#92400E" stroke-width="16" stroke-linecap="round"/>
+</svg>
