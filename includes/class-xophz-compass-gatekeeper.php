@@ -32,6 +32,9 @@ class Xophz_Compass_Gatekeeper extends Xophz_Compass_Plugin_Base {
 
 		// Register abilities into central COMPASS registry
 		add_filter( 'compass_abilities_registry', array( $this, 'register_abilities' ) );
+
+		// Ingest Hookshot webhooks for SaaS subscription fulfillment
+		add_action( 'xophz_hookshot_incoming', array( $this, 'handle_hookshot_incoming' ), 10, 2 );
 	}
 
 	/**
@@ -93,5 +96,55 @@ class Xophz_Compass_Gatekeeper extends Xophz_Compass_Plugin_Base {
 			'active'      => true,
 			'version'     => $this->version,
 		);
+	}
+
+	/**
+	 * Handle inbound webhook events from Hookshot to fulfill SaaS subscriptions.
+	 *
+	 * @param array|object $payload
+	 * @param int          $webhook_id
+	 */
+	public function handle_hookshot_incoming( $payload, $webhook_id ): void {
+		if ( is_object( $payload ) ) {
+			$payload = (array) $payload;
+		}
+		if ( ! is_array( $payload ) ) {
+			return;
+		}
+
+		$event_type = $payload['type'] ?? ( $payload['event'] ?? '' );
+		if ( empty( $event_type ) && isset( $payload['data']['object'] ) ) {
+			$event_type = 'checkout.session.completed';
+		}
+
+		if ( $event_type !== 'checkout.session.completed' && $event_type !== 'customer.subscription.created' ) {
+			return;
+		}
+
+		$session_obj = $payload['data']['object'] ?? $payload;
+		$metadata    = $session_obj['metadata'] ?? array();
+
+		if ( ( $metadata['product'] ?? '' ) !== 'forthexp' ) {
+			return;
+		}
+
+		$user_id = intval( $metadata['customer_uid'] ?? 0 );
+		if ( empty( $user_id ) && ! empty( $session_obj['customer_email'] ) ) {
+			$found_user = get_user_by( 'email', $session_obj['customer_email'] );
+			if ( $found_user ) {
+				$user_id = $found_user->ID;
+			}
+		}
+		if ( empty( $user_id ) ) {
+			$user_id = 1;
+		}
+
+		$tier   = sanitize_key( $metadata['tier'] ?? 'developer' );
+		$scopes = ! empty( $metadata['scopes'] ) ? array_filter( explode( ',', (string) $metadata['scopes'] ) ) : array( 'xp:read', 'xp:write' );
+		$label  = sprintf( 'forthexp.com SaaS Key (%s)', ucfirst( $tier ) );
+
+		$key_record = Gatekeeper_Keys::generate_key( $user_id, $label, $scopes, 'xp_live' );
+
+		do_action( 'xp_subscription_activated', $user_id, $tier, $key_record, $payload );
 	}
 }

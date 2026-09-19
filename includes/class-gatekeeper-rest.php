@@ -291,4 +291,92 @@ class Gatekeeper_REST extends Xophz_Compass_REST_Controller {
 			)
 		);
 	}
+
+	/**
+	 * Universal Route Guard for companion plugins.
+	 *
+	 * Returns a callable suitable for use as a WP_REST_Server permission_callback.
+	 *
+	 * @param string        $required_scope   Required capability scope (e.g. 'xp:write', 'xp:read').
+	 * @param callable|null $fallback_callback Optional callback if no machine key is presented.
+	 * @return callable
+	 */
+	public static function guard( string $required_scope = '', $fallback_callback = null ): callable {
+		return function( WP_REST_Request $request ) use ( $required_scope, $fallback_callback ) {
+			// 1. Inspect headers and params for API key
+			$api_key = $request->get_header( 'x-api-key' ) ?: $request->get_header( 'x_api_key' );
+			if ( empty( $api_key ) ) {
+				$auth_header = $request->get_header( 'authorization' );
+				if ( ! empty( $auth_header ) && preg_match( '/Bearer\s+([a-zA-Z0-9_\-]+)/i', $auth_header, $matches ) ) {
+					$api_key = $matches[1];
+				}
+			}
+			if ( empty( $api_key ) ) {
+				$api_key = $request->get_param( 'api_key' );
+			}
+
+			// 2. Validate presented API key
+			if ( ! empty( $api_key ) ) {
+				$validation = Gatekeeper_Keys::validate_key( (string) $api_key, $required_scope ?: null );
+				if ( ! $validation['valid'] ) {
+					$error_code = 'gatekeeper_unauthorized';
+					$status     = 401;
+					if ( strpos( $validation['error'] ?? '', 'Missing required scope' ) !== false ) {
+						$error_code = 'gatekeeper_forbidden_scope';
+						$status     = 403;
+					}
+					return new WP_Error( $error_code, $validation['error'] ?? 'Unauthorized.', array( 'status' => $status ) );
+				}
+
+				// Set active WordPress user context to key owner
+				if ( ! empty( $validation['user_id'] ) ) {
+					wp_set_current_user( (int) $validation['user_id'] );
+				}
+
+				// Store key details in request params for handler consumption
+				$request->set_param( '_gatekeeper_key_id', $validation['key_id'] ?? null );
+				$request->set_param( '_gatekeeper_scopes', $validation['scopes'] ?? array() );
+
+				// Allow external filters to inspect or augment authorization
+				$is_allowed = apply_filters( 'gatekeeper_authorize_route', true, $request, $required_scope, $validation );
+				if ( is_wp_error( $is_allowed ) ) {
+					return $is_allowed;
+				}
+				if ( false === $is_allowed ) {
+					return new WP_Error( 'gatekeeper_filter_rejected', 'Route access denied by filter.', array( 'status' => 403 ) );
+				}
+
+				return true;
+			}
+
+			// 3. Fall back to secondary callback if key is omitted (e.g. cookie session)
+			if ( is_callable( $fallback_callback ) ) {
+				return call_user_func( $fallback_callback, $request );
+			}
+
+			return new WP_Error(
+				'gatekeeper_missing_key',
+				'Missing machine API key. Please provide an X-API-Key or Authorization Bearer header.',
+				array( 'status' => 401 )
+			);
+		};
+	}
 }
+
+if ( ! function_exists( 'gatekeeper_guard' ) ) {
+	/**
+	 * Helper function to wrap REST route permission_callback with Gatekeeper route guard.
+	 *
+	 * @param string        $required_scope   Required capability scope.
+	 * @param callable|null $fallback_callback Optional fallback callback.
+	 * @return callable
+	 */
+	function gatekeeper_guard( string $required_scope = '', $fallback_callback = null ): callable {
+		return Gatekeeper_REST::guard( $required_scope, $fallback_callback );
+	}
+}
+
+// Register global filter hook for plugins checking Gatekeeper availability dynamically
+add_filter( 'gatekeeper_route_guard', function( $default_callback, string $required_scope = '', $fallback = null ) {
+	return Gatekeeper_REST::guard( $required_scope, $fallback );
+}, 10, 3 );

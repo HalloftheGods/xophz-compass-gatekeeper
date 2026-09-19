@@ -5,6 +5,13 @@ All notable changes to the Xophz Gatekeeper plugin will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `Gatekeeper_REST::guard()` and global `gatekeeper_guard()` helper function providing universal cryptographic token and permission verification across all companion plugins.
+- `gatekeeper_route_guard` filter hook for dynamic REST route security registration.
+- Hookshot webhook fulfillment listener (`xophz_hookshot_incoming`) for automated machine API key generation (`xp_live_*`) on completed Stripe subscription checkouts.
+
 ## [1.0.0] - 2026-09-13
 
 ### Added
