@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Gatekeeper_REST::guard()` and global `gatekeeper_guard()` helper function providing universal cryptographic token and permission verification across all companion plugins.
 - `gatekeeper_route_guard` filter hook for dynamic REST route security registration.
 - Hookshot webhook fulfillment listener (`xophz_hookshot_incoming`) for automated machine API key generation (`xp_live_*`) on completed Stripe subscription checkouts.
+- Dedicated REST routes for listing and minting client software licenses (`GET /licenses`, `POST /licenses`).
+- Dedicated REST route for listing active GitHub sponsor entitlements (`GET /sponsors`).
+- Expanded machine OpenAPI abilities declaration for AI coding assistants.
 
 ## [1.0.0] - 2026-09-13
 

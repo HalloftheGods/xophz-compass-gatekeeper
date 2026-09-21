@@ -111,6 +111,60 @@ class Gatekeeper_REST extends Xophz_Compass_REST_Controller {
 			)
 		);
 
+		// Client Software Licenses Management
+		register_rest_route(
+			$this->namespace,
+			'/licenses',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'list_licenses' ),
+					'permission_callback' => array( $this, 'permissions_admin' ),
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'mint_license' ),
+					'permission_callback' => array( $this, 'permissions_admin' ),
+					'args'                => array(
+						'tier'        => array(
+							'required'          => false,
+							'type'              => 'string',
+							'default'           => 'standard',
+							'sanitize_callback' => 'sanitize_key',
+						),
+						'github_user' => array(
+							'required'          => false,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+						'email'       => array(
+							'required'          => false,
+							'type'              => 'string',
+							'sanitize_callback' => 'sanitize_email',
+						),
+						'max_devices' => array(
+							'required'          => false,
+							'type'              => 'integer',
+							'default'           => 3,
+						),
+					),
+				),
+			)
+		);
+
+		// Sponsor Entitlements Listing
+		register_rest_route(
+			$this->namespace,
+			'/sponsors',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'list_sponsors' ),
+					'permission_callback' => array( $this, 'permissions_admin' ),
+				),
+			)
+		);
+
 		// Machine Schema / AI Abilities Declaration
 		register_rest_route(
 			$this->namespace,
@@ -259,6 +313,54 @@ class Gatekeeper_REST extends Xophz_Compass_REST_Controller {
 	}
 
 	/**
+	 * List all stored client software licenses.
+	 */
+	public function list_licenses( WP_REST_Request $request ): WP_REST_Response {
+		$licenses = Gatekeeper_Licenses::get_all_licenses();
+		return rest_ensure_response(
+			array(
+				'success'  => true,
+				'count'    => count( $licenses ),
+				'licenses' => array_values( $licenses ),
+			)
+		);
+	}
+
+	/**
+	 * Mint a new client software license.
+	 */
+	public function mint_license( WP_REST_Request $request ): WP_REST_Response {
+		$tier        = (string) ( $request->get_param( 'tier' ) ?: 'standard' );
+		$github_user = $request->get_param( 'github_user' ) ? (string) $request->get_param( 'github_user' ) : null;
+		$email       = $request->get_param( 'email' ) ? (string) $request->get_param( 'email' ) : null;
+		$max_devices = $request->get_param( 'max_devices' ) !== null ? (int) $request->get_param( 'max_devices' ) : 3;
+
+		$record = Gatekeeper_Licenses::mint_license( $tier, $github_user, $email, $max_devices );
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'License minted successfully.',
+				'license' => $record,
+			)
+		);
+	}
+
+	/**
+	 * List all GitHub sponsor entitlements.
+	 */
+	public function list_sponsors( WP_REST_Request $request ): WP_REST_Response {
+		$sponsors = Gatekeeper_Entitlements::list_sponsors();
+		return rest_ensure_response(
+			array(
+				'success'  => true,
+				'count'    => count( $sponsors ),
+				'sponsors' => $sponsors,
+			)
+		);
+	}
+
+	/**
 	 * Expose machine-readable schema and abilities for AI agents.
 	 */
 	public function get_schema( WP_REST_Request $request ): WP_REST_Response {
@@ -279,6 +381,34 @@ class Gatekeeper_REST extends Xophz_Compass_REST_Controller {
 						'method'      => 'POST',
 						'description' => 'Mints a machine-to-machine API key with custom prefix (default stargate_).',
 						'parameters'  => array( 'name' => 'string', 'prefix' => 'string', 'scopes' => 'array' ),
+					),
+					array(
+						'action'      => 'list_keys',
+						'endpoint'    => "/{$this->namespace}/keys",
+						'method'      => 'GET',
+						'description' => 'Lists active machine-to-machine API keys (masked tokens).',
+						'parameters'  => array(),
+					),
+					array(
+						'action'      => 'list_licenses',
+						'endpoint'    => "/{$this->namespace}/licenses",
+						'method'      => 'GET',
+						'description' => 'Lists all stored client software licenses and activation records.',
+						'parameters'  => array(),
+					),
+					array(
+						'action'      => 'mint_license',
+						'endpoint'    => "/{$this->namespace}/licenses",
+						'method'      => 'POST',
+						'description' => 'Mints a client software license for Chemical X or COMPASS companion tools.',
+						'parameters'  => array( 'tier' => 'string', 'github_user' => 'string', 'email' => 'string' ),
+					),
+					array(
+						'action'      => 'list_sponsors',
+						'endpoint'    => "/{$this->namespace}/sponsors",
+						'method'      => 'GET',
+						'description' => 'Lists all active GitHub sponsor entitlements.',
+						'parameters'  => array(),
 					),
 					array(
 						'action'      => 'sync_sponsor',
