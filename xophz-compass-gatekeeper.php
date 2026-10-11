@@ -31,6 +31,7 @@ if ( ! class_exists( 'Xophz_Compass_Plugin_Base' ) ) {
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-keys.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-licenses.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-entitlements.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-route-guard.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-rest.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'admin/class-xophz-compass-gatekeeper-admin.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-xophz-compass-gatekeeper.php';

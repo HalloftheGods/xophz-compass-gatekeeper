@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dedicated REST route for listing active GitHub sponsor entitlements (`GET /sponsors`).
 - Expanded machine OpenAPI abilities declaration for AI coding assistants.
 
+### Changed
+- The route guard moved to `Gatekeeper_Route_Guard` (`includes/class-gatekeeper-route-guard.php`). `Gatekeeper_REST::guard()`, `gatekeeper_guard()` and the `gatekeeper_route_guard` filter keep working and delegate to it.
+
+### Security
+- The route guard reads an API key only from the `X-API-Key` header or `Authorization: Bearer`. A key in the query string (`?api_key=`) is refused with 400 `gatekeeper_api_key_in_url`, valid or not, and an `api_key` body field is ignored (#5992). Rotate any key that was ever sent in a URL.
+
 ## [1.0.0] - 2026-09-13
 
 ### Added
