@@ -35,6 +35,9 @@ class Xophz_Compass_Gatekeeper extends Xophz_Compass_Plugin_Base {
 
 		// Ingest Hookshot webhooks for SaaS subscription fulfillment
 		add_action( 'xophz_hookshot_incoming', array( $this, 'handle_hookshot_incoming' ), 10, 2 );
+
+		// XP Pro (Do It For The XP) grants, extensions and revocations from Stripe and RevenueCat
+		add_action( 'xophz_hookshot_incoming', array( 'Gatekeeper_Xp_Pro_Intake', 'handle' ), 20, 2 );
 	}
 
 	/**

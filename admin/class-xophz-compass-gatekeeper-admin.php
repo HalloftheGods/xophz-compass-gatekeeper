@@ -18,6 +18,153 @@ class Xophz_Compass_Gatekeeper_Admin {
 	public function __construct( string $plugin_name, string $version ) {
 		$this->plugin_name = $plugin_name;
 		$this->version     = $version;
+
+		add_action( 'admin_menu', array( $this, 'register_xp_pro_page' ) );
+		add_action( 'admin_post_gatekeeper_xp_pro_save', array( $this, 'handle_save_xp_pro' ) );
+		add_action( 'admin_post_gatekeeper_xp_pro_reset', array( $this, 'handle_reset_xp_pro_devices' ) );
+	}
+
+	const PAGE_XP_PRO = 'gatekeeper-xp-pro';
+
+	/**
+	 * Settings > Gatekeeper XP Pro: the webhook ids, the AI daily limit and the license list.
+	 */
+	public function register_xp_pro_page(): void {
+		add_options_page(
+			'Gatekeeper XP Pro',
+			'Gatekeeper XP Pro',
+			'manage_options',
+			self::PAGE_XP_PRO,
+			array( $this, 'render_xp_pro_page' )
+		);
+	}
+
+	public function render_xp_pro_page(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized access.', 'xophz-compass-gatekeeper' ) );
+		}
+		echo '<div class="wrap"><h1>Gatekeeper XP Pro</h1>';
+		$this->render_xp_pro_section();
+		echo '</div>';
+	}
+
+	/**
+	 * Save the XP Pro settings. Ids are positive integers (0 means not set); the AI limit
+	 * must be at least 1 or the old value stays.
+	 */
+	public static function save_xp_pro_settings( array $input ): void {
+		$id = static function ( $value ): int {
+			$n = is_scalar( $value ) ? (int) trim( (string) $value ) : 0;
+			return $n > 0 ? $n : 0;
+		};
+
+		update_option(
+			Gatekeeper_Xp_Pro_Intake::OPTION_WEBHOOKS,
+			array(
+				'stripe'     => $id( $input['stripe_webhook_id'] ?? 0 ),
+				'revenuecat' => $id( $input['revenuecat_webhook_id'] ?? 0 ),
+			),
+			false
+		);
+
+		$limit = $id( $input['ai_daily_limit'] ?? 0 );
+		if ( $limit >= 1 ) {
+			update_option( 'xp_pro_ai_daily_limit', $limit, false );
+		}
+	}
+
+	public function handle_save_xp_pro(): void {
+		$this->require_admin( 'gatekeeper_xp_pro_save' );
+		self::save_xp_pro_settings( wp_unslash( $_POST ) );
+		$this->back_to_xp_pro( 'saved' );
+	}
+
+	public function handle_reset_xp_pro_devices(): void {
+		$this->require_admin( 'gatekeeper_xp_pro_reset' );
+		$family_id = isset( $_POST['family_id'] ) ? sanitize_text_field( wp_unslash( $_POST['family_id'] ) ) : '';
+		if ( Gatekeeper_Xp_Pro_Licenses::is_uuid4( $family_id ) ) {
+			Gatekeeper_Xp_Pro_Licenses::reset_devices( $family_id );
+		}
+		$this->back_to_xp_pro( 'reset' );
+	}
+
+	/** Every write needs manage_options and a valid nonce for its own action. */
+	private function require_admin( string $action ): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized access.', 'xophz-compass-gatekeeper' ), '', array( 'response' => 403 ) );
+		}
+		check_admin_referer( $action );
+	}
+
+	private function back_to_xp_pro( string $notice ): void {
+		wp_safe_redirect( add_query_arg( array( 'page' => self::PAGE_XP_PRO, 'xp_pro_notice' => $notice ), admin_url( 'options-general.php' ) ) );
+		exit;
+	}
+
+	public function render_xp_pro_section(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$webhooks = get_option( Gatekeeper_Xp_Pro_Intake::OPTION_WEBHOOKS, array() );
+		$webhooks = is_array( $webhooks ) ? $webhooks : array();
+		$limit    = (int) get_option( 'xp_pro_ai_daily_limit', 100 );
+		$records  = Gatekeeper_Xp_Pro_Licenses::all();
+		$post_url = admin_url( 'admin-post.php' );
+		?>
+		<h2>XP Pro</h2>
+		<form method="post" action="<?php echo esc_url( $post_url ); ?>">
+			<input type="hidden" name="action" value="gatekeeper_xp_pro_save" />
+			<?php wp_nonce_field( 'gatekeeper_xp_pro_save' ); ?>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><label for="gk-xp-pro-stripe">Stripe webhook id</label></th>
+					<td><input id="gk-xp-pro-stripe" name="stripe_webhook_id" type="number" min="0" value="<?php echo esc_attr( (int) ( $webhooks['stripe'] ?? 0 ) ); ?>" class="small-text" />
+					<p class="description">Post id of the Hookshot webhook "XP Pro: Stripe" (mode HMAC, header Stripe-Signature).</p></td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="gk-xp-pro-rc">RevenueCat webhook id</label></th>
+					<td><input id="gk-xp-pro-rc" name="revenuecat_webhook_id" type="number" min="0" value="<?php echo esc_attr( (int) ( $webhooks['revenuecat'] ?? 0 ) ); ?>" class="small-text" />
+					<p class="description">Post id of the Hookshot webhook "XP Pro: RevenueCat" (mode Bearer).</p></td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="gk-xp-pro-limit">AI calls per license per day</label></th>
+					<td><input id="gk-xp-pro-limit" name="ai_daily_limit" type="number" min="1" value="<?php echo esc_attr( $limit ); ?>" class="small-text" /></td>
+				</tr>
+			</table>
+			<?php submit_button( 'Save XP Pro settings' ); ?>
+		</form>
+
+		<h3>XP Pro licenses</h3>
+		<?php if ( empty( $records ) ) : ?>
+			<p>No XP Pro licenses yet.</p>
+		<?php else : ?>
+			<table class="widefat striped">
+				<thead><tr><th>Key</th><th>Plan</th><th>Status</th><th>Expires</th><th>Env</th><th>Email</th><th>Devices</th><th></th></tr></thead>
+				<tbody>
+				<?php foreach ( $records as $record ) : ?>
+					<tr>
+						<td><code><?php echo esc_html( (string) ( $record['license_key'] ?? '' ) ); ?></code></td>
+						<td><?php echo esc_html( (string) ( $record['plan'] ?? '' ) ); ?></td>
+						<td><?php echo esc_html( (string) ( $record['status'] ?? '' ) ); ?></td>
+						<td><?php echo esc_html( (string) ( $record['expires_at'] ?? 'never' ) ); ?></td>
+						<td><?php echo esc_html( (string) ( $record['env'] ?? '' ) ); ?></td>
+						<td><?php echo esc_html( (string) ( $record['email'] ?? '' ) ); ?></td>
+						<td><?php echo esc_html( count( (array) ( $record['devices'] ?? array() ) ) ); ?> / <?php echo esc_html( Gatekeeper_Xp_Pro_Licenses::MAX_DEVICES ); ?></td>
+						<td>
+							<form method="post" action="<?php echo esc_url( $post_url ); ?>">
+								<input type="hidden" name="action" value="gatekeeper_xp_pro_reset" />
+								<input type="hidden" name="family_id" value="<?php echo esc_attr( (string) ( $record['family_id'] ?? '' ) ); ?>" />
+								<?php wp_nonce_field( 'gatekeeper_xp_pro_reset' ); ?>
+								<button type="submit" class="button button-small">Reset devices</button>
+							</form>
+						</td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+		<?php
 	}
 
 	/**
@@ -83,6 +230,8 @@ class Xophz_Compass_Gatekeeper_Admin {
 					</tbody>
 				</table>
 			</div>
+
+			<?php $this->render_xp_pro_section(); ?>
 		</div>
 		<?php
 	}
