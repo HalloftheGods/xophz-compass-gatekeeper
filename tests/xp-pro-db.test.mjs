@@ -205,7 +205,12 @@ describe('XP Pro db: real database', () => {
       `);
       assert.deepStrictEqual(res, ['written-behind-our-back']);
     } finally {
-      xpWp(`global $wpdb; $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'gk\\\\_xp\\\\_pro\\\\_%${family}%' OR option_name IN ('gk_xp_pro_sub_sub_unit_lock','gk_xp_pro_cus_cus_unit_lock')"); echo json_encode(true);`);
+      xpWp(`
+        $rec = get_option('${opt}');
+        if (is_array($rec)) { delete_option('gk_xp_pro_key_' . $rec['license_key']); }
+        foreach (['${opt}', 'gk_xp_pro_sub_sub_unit_lock', 'gk_xp_pro_cus_cus_unit_lock'] as $n) { delete_option($n); }
+        echo json_encode(true);
+      `);
     }
   });
 });
