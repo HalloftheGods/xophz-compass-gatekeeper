@@ -1,0 +1,16 @@
+{
+  "api_version": "1.0",
+  "event": {
+    "id": "rc-evt-0012",
+    "type": "TRANSFER",
+    "event_timestamp_ms": 1790000000000,
+    "transferred_from": [
+      "3f6c2a1e-8b4d-4c7a-9e2f-1a2b3c4d5e6f"
+    ],
+    "transferred_to": [
+      "3f6c2a1e-8b4d-4c7a-9e2f-1a2b3c4d5e70"
+    ],
+    "environment": "PRODUCTION",
+    "store": "APP_STORE"
+  }
+}

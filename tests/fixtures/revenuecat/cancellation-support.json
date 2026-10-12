@@ -1,0 +1,28 @@
+{
+  "api_version": "1.0",
+  "event": {
+    "id": "rc-evt-0009",
+    "type": "CANCELLATION",
+    "app_id": "app1a2b3c4d5e",
+    "event_timestamp_ms": 1790000000000,
+    "app_user_id": "3f6c2a1e-8b4d-4c7a-9e2f-1a2b3c4d5e6f",
+    "original_app_user_id": "3f6c2a1e-8b4d-4c7a-9e2f-1a2b3c4d5e6f",
+    "aliases": [
+      "3f6c2a1e-8b4d-4c7a-9e2f-1a2b3c4d5e6f"
+    ],
+    "product_id": "xp_pro_monthly",
+    "period_type": "NORMAL",
+    "purchased_at_ms": 1790000000000,
+    "expiration_at_ms": 1790604800000,
+    "environment": "PRODUCTION",
+    "entitlement_ids": [
+      "pro"
+    ],
+    "store": "APP_STORE",
+    "currency": "USD",
+    "price": 0,
+    "transaction_id": "2000000100000001",
+    "original_transaction_id": "2000000100000001",
+    "cancel_reason": "CUSTOMER_SUPPORT"
+  }
+}

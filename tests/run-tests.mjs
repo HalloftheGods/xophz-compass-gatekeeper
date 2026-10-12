@@ -7,6 +7,7 @@ import './licenses.test.mjs';
 import './hookshot-fulfilment.test.mjs';
 import './xp-pro-licenses.test.mjs';
 import './xp-pro-stripe.test.mjs';
+import './xp-pro-revenuecat.test.mjs';
 
 const results = await harness.run();
 if (results.failed > 0) {
