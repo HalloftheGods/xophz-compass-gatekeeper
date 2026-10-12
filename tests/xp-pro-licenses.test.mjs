@@ -143,22 +143,30 @@ describe('XP Pro licenses: extend, expire, revoke', () => {
     assert.deepStrictEqual(res, { count: 50, first: 'evt_11', last: 'evt_60' });
   });
 
-  it('expire then extend brings an expired subscription back, revoke does not come back by extend', () => {
+  it('expire then extend brings an expired subscription back', () => {
     const res = xp(`
       Gatekeeper_Xp_Pro_Licenses::apply(${lit(op())}, 'evt_1');
       $ref = ['type' => 'sub', 'id' => 'sub_100'];
       $exp = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'expire', 'source' => 'stripe', 'ref' => $ref], 'evt_2');
       $ext = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'extend', 'source' => 'stripe', 'ref' => $ref, 'expires_at' => 1810000000], 'evt_3');
-      $rev = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'revoke', 'source' => 'stripe', 'ref' => ['type' => 'pi', 'id' => 'pi_100']], 'evt_4');
-      $ext2 = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'extend', 'source' => 'stripe', 'ref' => $ref, 'expires_at' => 1820000000], 'evt_5');
-      echo json_encode([$exp['record']['status'], $ext['record']['status'], $rev['record']['status'], $ext2['record']['status']]);
+      echo json_encode([$exp['record']['status'], $ext['record']['status']]);
     `);
-    assert.deepStrictEqual(res, ['expired', 'active', 'revoked', 'revoked']);
+    assert.deepStrictEqual(res, ['expired', 'active']);
+  });
+
+  it('a revoked lifetime does not come back by extend', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'lifetime', expires_at: null }))}, 'evt_1');
+      $rev = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'revoke', 'source' => 'stripe', 'ref' => ['type' => 'pi', 'id' => 'pi_100']], 'evt_2');
+      $ext = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'extend', 'source' => 'stripe', 'ref' => ['type' => 'sub', 'id' => 'sub_100'], 'expires_at' => 1820000000], 'evt_3');
+      echo json_encode([$rev['record']['status'], $ext['record']['status']]);
+    `);
+    assert.deepStrictEqual(res, ['revoked', 'revoked']);
   });
 
   it('revoke then re-grant reuses the key and sets status active', () => {
     const res = xp(`
-      $a = Gatekeeper_Xp_Pro_Licenses::apply(${lit(op())}, 'evt_1');
+      $a = Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'lifetime', expires_at: null }))}, 'evt_1');
       Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'revoke', 'source' => 'stripe', 'ref' => ['type' => 'pi', 'id' => 'pi_100']], 'evt_2');
       $b = Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ refs: { sub: 'sub_200', pi: 'pi_200', cus: 'cus_100' } }))}, 'evt_3');
       echo json_encode(['same' => $a['record']['license_key'] === $b['record']['license_key'], 'status' => $b['record']['status'], 'created' => $b['created_key']]);
@@ -197,6 +205,122 @@ describe('XP Pro licenses: lifetime wins', () => {
       echo json_encode(['status' => $r['record']['status']]);
     `);
     assert.strictEqual(res.status, 'revoked');
+  });
+});
+
+describe('XP Pro licenses: one source per paid period (F1)', () => {
+  const rcOp = (overrides = {}) => ({
+    action: 'grant', source: 'revenuecat', family_id: FAMILY, ref: null, plan: 'monthly', expires_at: 1790600000,
+    env: 'production', email: null, refs: { product_id: 'xp_pro_monthly', store: 'APP_STORE' }, ...overrides,
+  });
+  const stripeRevoke = (pi) => ({ action: 'revoke', source: 'stripe', ref: { type: 'pi', id: pi } });
+  const stripeRefundCus = { action: 'revoke', source: 'stripe', ref: { type: 'cus', id: 'cus_100' } };
+
+  it('refunding a monthly charge keeps an active lifetime', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'lifetime', expires_at: null, refs: { pi: 'pi_life', cus: 'cus_100' } }))}, 'evt_1');
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(stripeRevoke('pi_monthly_invoice'))}, 'evt_2');
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(stripeRefundCus)}, 'evt_3');
+      $r = Gatekeeper_Xp_Pro_Licenses::get('${FAMILY}');
+      echo json_encode([$r['status'], $r['plan'], $r['expires_at']]);
+    `);
+    assert.deepStrictEqual(res, ['active', 'lifetime', null]);
+  });
+
+  it('a goodwill subscription refund then invoice.paid reactivates', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op())}, 'evt_1');
+      $a = Gatekeeper_Xp_Pro_Licenses::apply(${lit(stripeRefundCus)}, 'evt_2');
+      $b = Gatekeeper_Xp_Pro_Licenses::apply(${lit({ action: 'extend', source: 'stripe', ref: { type: 'sub', id: 'sub_100' }, expires_at: 1802592000 })}, 'evt_3');
+      echo json_encode([$a['record']['status'], $b['record']['status'], $b['record']['expires_at']]);
+    `);
+    assert.deepStrictEqual(res, ['expired', 'active', '2027-02-14T08:00:00Z']);
+  });
+
+  it('refunding the lifetime payment revokes', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'lifetime', expires_at: null, refs: { pi: 'pi_life', cus: 'cus_100' } }))}, 'evt_1');
+      $r = Gatekeeper_Xp_Pro_Licenses::apply(${lit(stripeRevoke('pi_life'))}, 'evt_2');
+      $rc = Gatekeeper_Xp_Pro_Licenses::apply(${lit(rcOp({ plan: 'lifetime', expires_at: null, refs: { product_id: 'xp_pro_lifetime' }, family_id: '9a8b7c6d-1e2f-4a3b-8c4d-5e6f7a8b9c0d' }))}, 'evt_3');
+      $rcRev = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'revoke', 'source' => 'revenuecat', 'family_id' => '9a8b7c6d-1e2f-4a3b-8c4d-5e6f7a8b9c0d', 'refs' => ['product_id' => 'xp_pro_lifetime']], 'evt_4');
+      echo json_encode([$r['record']['status'], $rcRev['record']['status']]);
+    `);
+    assert.deepStrictEqual(res, ['revoked', 'revoked']);
+  });
+
+  it('RevenueCat CUSTOMER_SUPPORT on a subscription keeps a Stripe lifetime', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'lifetime', expires_at: null, refs: { pi: 'pi_life', cus: 'cus_100' } }))}, 'evt_1');
+      $r = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'revoke', 'source' => 'revenuecat', 'family_id' => '${FAMILY}', 'refs' => ['product_id' => 'xp_pro_monthly']], 'evt_2');
+      echo json_encode([$r['record']['status'], $r['record']['plan']]);
+    `);
+    assert.deepStrictEqual(res, ['active', 'lifetime']);
+  });
+
+  it('an iOS EXPIRATION does not end a newer web yearly', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(rcOp())}, 'evt_1');
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'yearly', expires_at: 1820000000, refs: { sub: 'sub_web', cus: 'cus_100' } }))}, 'evt_2');
+      $r = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'expire', 'source' => 'revenuecat', 'family_id' => '${FAMILY}', 'refs' => ['product_id' => 'xp_pro_monthly']], 'evt_3');
+      $own = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'expire', 'source' => 'stripe', 'ref' => ['type' => 'sub', 'id' => 'sub_web']], 'evt_4');
+      echo json_encode([$r['record']['status'], $r['record']['plan'], $r['record']['period_source'], $own['record']['status']]);
+    `);
+    assert.deepStrictEqual(res, ['active', 'yearly', 'stripe:sub_web', 'expired']);
+  });
+
+  it('a monthly renewal never shortens a later expires_at', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'yearly', expires_at: 1820000000 }))}, 'evt_1');
+      $r = Gatekeeper_Xp_Pro_Licenses::apply(${lit(rcOp({ expires_at: 1800000000 }))}, 'evt_2');
+      $e = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'extend', 'source' => 'stripe', 'ref' => ['type' => 'sub', 'id' => 'sub_100'], 'expires_at' => 1801000000], 'evt_3');
+      echo json_encode([$e['record']['expires_at'], $e['record']['plan'], $e['record']['period_source']]);
+    `);
+    assert.deepStrictEqual(res, ['2027-09-03T19:33:20Z', 'yearly', 'stripe:sub_100']);
+  });
+
+  it('deleting an old Stripe sub after a new one does not expire', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op())}, 'evt_1');
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ refs: { sub: 'sub_new', cus: 'cus_100' }, expires_at: 1810000000 }))}, 'evt_2');
+      $old = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'expire', 'source' => 'stripe', 'ref' => ['type' => 'sub', 'id' => 'sub_100']], 'evt_3');
+      echo json_encode([$old['record']['status'], $old['record']['period_source']]);
+    `);
+    assert.deepStrictEqual(res, ['active', 'stripe:sub_new']);
+  });
+
+  it('a sandbox grant leaves a production record unchanged', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op())}, 'evt_1');
+      $before = Gatekeeper_Xp_Pro_Licenses::get('${FAMILY}');
+      $g = Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ env: 'sandbox', plan: 'yearly', expires_at: 1900000000, refs: { sub: 'sub_sbx' } }))}, 'evt_2');
+      $x = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'expire', 'source' => 'stripe', 'env' => 'sandbox', 'ref' => ['type' => 'sub', 'id' => 'sub_100']], 'evt_3');
+      $v = Gatekeeper_Xp_Pro_Licenses::apply(['action' => 'revoke', 'source' => 'stripe', 'env' => 'sandbox', 'ref' => ['type' => 'pi', 'id' => 'pi_100']], 'evt_4');
+      $after = Gatekeeper_Xp_Pro_Licenses::get('${FAMILY}');
+      echo json_encode([$g['changed'], $x['changed'], $v['changed'], $before === $after, $after['env']]);
+    `);
+    assert.deepStrictEqual(res, [false, false, false, true, 'production']);
+  });
+
+  it('a production event on a sandbox record sets env production', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ env: 'sandbox' }))}, 'evt_1');
+      $a = Gatekeeper_Xp_Pro_Licenses::get('${FAMILY}')['env'];
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ env: 'production', expires_at: 1810000000 }))}, 'evt_2');
+      echo json_encode([$a, Gatekeeper_Xp_Pro_Licenses::get('${FAMILY}')['env']]);
+    `);
+    assert.deepStrictEqual(res, ['sandbox', 'production']);
+  });
+
+  it('admin restore reactivates a revoked record', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'lifetime', expires_at: null }))}, 'evt_1');
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(stripeRevoke('pi_100'))}, 'evt_2');
+      $revoked = Gatekeeper_Xp_Pro_Licenses::get('${FAMILY}')['status'];
+      $ok = Gatekeeper_Xp_Pro_Licenses::restore('${FAMILY}', 7);
+      $r = Gatekeeper_Xp_Pro_Licenses::get('${FAMILY}');
+      echo json_encode([$revoked, $ok, $r['status'], $r['notes'][0]['user_id'], is_string($r['notes'][0]['at']), Gatekeeper_Xp_Pro_Licenses::restore('9a8b7c6d-1e2f-4a3b-8c4d-5e6f7a8b9c0d', 7)]);
+    `);
+    assert.deepStrictEqual(res, ['revoked', true, 'active', 7, true, false]);
   });
 });
 

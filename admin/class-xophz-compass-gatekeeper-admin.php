@@ -22,6 +22,7 @@ class Xophz_Compass_Gatekeeper_Admin {
 		add_action( 'admin_menu', array( $this, 'register_xp_pro_page' ) );
 		add_action( 'admin_post_gatekeeper_xp_pro_save', array( $this, 'handle_save_xp_pro' ) );
 		add_action( 'admin_post_gatekeeper_xp_pro_reset', array( $this, 'handle_reset_xp_pro_devices' ) );
+		add_action( 'admin_post_gatekeeper_xp_pro_restore', array( $this, 'handle_restore_xp_pro' ) );
 	}
 
 	const PAGE_XP_PRO = 'gatekeeper-xp-pro';
@@ -88,6 +89,15 @@ class Xophz_Compass_Gatekeeper_Admin {
 		$this->back_to_xp_pro( 'reset' );
 	}
 
+	public function handle_restore_xp_pro(): void {
+		$this->require_admin( 'gatekeeper_xp_pro_restore' );
+		$family_id = isset( $_POST['family_id'] ) ? sanitize_text_field( wp_unslash( $_POST['family_id'] ) ) : '';
+		if ( Gatekeeper_Xp_Pro_Licenses::is_uuid4( $family_id ) ) {
+			Gatekeeper_Xp_Pro_Licenses::restore( $family_id, get_current_user_id() );
+		}
+		$this->back_to_xp_pro( 'restored' );
+	}
+
 	/** Every write needs manage_options and a valid nonce for its own action. */
 	private function require_admin( string $action ): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -152,11 +162,17 @@ class Xophz_Compass_Gatekeeper_Admin {
 						<td><?php echo esc_html( (string) ( $record['email'] ?? '' ) ); ?></td>
 						<td><?php echo esc_html( count( (array) ( $record['devices'] ?? array() ) ) ); ?> / <?php echo esc_html( Gatekeeper_Xp_Pro_Licenses::MAX_DEVICES ); ?></td>
 						<td>
-							<form method="post" action="<?php echo esc_url( $post_url ); ?>">
+							<form method="post" action="<?php echo esc_url( $post_url ); ?>" style="display:inline">
 								<input type="hidden" name="action" value="gatekeeper_xp_pro_reset" />
 								<input type="hidden" name="family_id" value="<?php echo esc_attr( (string) ( $record['family_id'] ?? '' ) ); ?>" />
 								<?php wp_nonce_field( 'gatekeeper_xp_pro_reset' ); ?>
 								<button type="submit" class="button button-small">Reset devices</button>
+							</form>
+							<form method="post" action="<?php echo esc_url( $post_url ); ?>" style="display:inline">
+								<input type="hidden" name="action" value="gatekeeper_xp_pro_restore" />
+								<input type="hidden" name="family_id" value="<?php echo esc_attr( (string) ( $record['family_id'] ?? '' ) ); ?>" />
+								<?php wp_nonce_field( 'gatekeeper_xp_pro_restore' ); ?>
+								<button type="submit" class="button button-small">Restore</button>
 							</form>
 						</td>
 					</tr>

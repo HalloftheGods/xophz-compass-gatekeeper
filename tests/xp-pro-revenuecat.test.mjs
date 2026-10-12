@@ -108,7 +108,7 @@ describe('XP Pro RevenueCat: endings and no-ops', () => {
 });
 
 describe('XP Pro RevenueCat: through the store', () => {
-  it('purchase, support refund, then re-purchase reuses the key', () => {
+  it('purchase, support refund of a subscription, then renewal reuses the key', () => {
     const res = xp(`
       $run = function ($payload) {
         return Gatekeeper_Xp_Pro_Licenses::apply(Gatekeeper_Xp_Pro_RevenueCat::to_op($payload), Gatekeeper_Xp_Pro_RevenueCat::event_id($payload));
@@ -118,7 +118,7 @@ describe('XP Pro RevenueCat: through the store', () => {
       $c = $run(${lit(fixture('renewal-yearly'))});
       echo json_encode([$a['created_key'], $b['record']['status'], $c['record']['status'], $a['record']['license_key'] === $c['record']['license_key'], $c['record']['sources']['revenuecat']['store']]);
     `);
-    assert.deepStrictEqual(res, [true, 'revoked', 'active', true, 'PLAY_STORE']);
+    assert.deepStrictEqual(res, [true, 'expired', 'active', true, 'PLAY_STORE']);
   });
 });
 

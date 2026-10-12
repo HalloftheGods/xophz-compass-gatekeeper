@@ -125,13 +125,13 @@ describe('XP Pro intake: deliveries that change nothing', () => {
     assert.strictEqual(res.mail.length, 0);
   });
 
-  it('a refund from the Stripe webhook revokes, from an unverified one it does not', () => {
+  it('a goodwill refund from the Stripe webhook ends the period, from an unverified one it does not', () => {
     const refund = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'stripe', 'charge-refunded-subscription.json'), 'utf8'));
     const ok = intake(`
       Gatekeeper_Xp_Pro_Intake::handle(${lit(stripeEvent)}, ${STRIPE_ID});
       Gatekeeper_Xp_Pro_Intake::handle(${lit(refund)}, ${STRIPE_ID});
     `);
-    assert.strictEqual(ok.record.status, 'revoked');
+    assert.strictEqual(ok.record.status, 'expired');
     const blocked = intake(`
       Gatekeeper_Xp_Pro_Intake::handle(${lit(stripeEvent)}, ${STRIPE_ID});
       Hookshot_Signature::$ok = [];

@@ -48,10 +48,10 @@ class Gatekeeper_Xp_Pro_RevenueCat {
 			case 'CANCELLATION':
 				// Auto-renew off: the paid period still runs out. Only a support refund revokes.
 				return ( $event['cancel_reason'] ?? '' ) === 'CUSTOMER_SUPPORT'
-					? self::op( 'revoke', $family_id, $env )
+					? self::op( 'revoke', $family_id, $env, self::product_fields( $event ) )
 					: self::none();
 			case 'EXPIRATION':
-				return self::op( 'expire', $family_id, $env );
+				return self::op( 'expire', $family_id, $env, self::product_fields( $event ) );
 		}
 
 		return self::none();
@@ -88,6 +88,12 @@ class Gatekeeper_Xp_Pro_RevenueCat {
 			return self::none();
 		}
 		return self::op( 'grant', $family_id, $env, array( 'plan' => 'lifetime', 'expires_at' => null, 'refs' => self::refs( $event, $product ) ) );
+	}
+
+	/** The product the event is about, so the store can tell a lifetime refund from a subscription one. */
+	private static function product_fields( array $event ): array {
+		$product = $event['product_id'] ?? null;
+		return is_string( $product ) && '' !== $product ? array( 'refs' => array( 'product_id' => $product ) ) : array();
 	}
 
 	private static function refs( array $event, string $product ): array {

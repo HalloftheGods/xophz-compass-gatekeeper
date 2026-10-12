@@ -155,14 +155,14 @@ function refundScenario(name) {
 }
 
 describe('XP Pro Stripe: end to end through the store', () => {
-  it('a subscription refund with only customer set revokes by customer', () => {
+  it('a subscription refund with only customer set ends the period (expired, not revoked)', () => {
     const res = refundScenario('charge-refunded-subscription');
-    assert.deepStrictEqual(res, { before: true, changed: true, status: 'revoked', pro: false });
+    assert.deepStrictEqual(res, { before: true, changed: true, status: 'expired', pro: false });
   });
 
-  it("a subscription refund whose charge carries the invoice's own payment intent still revokes", () => {
+  it("a subscription refund whose charge carries the invoice's own payment intent still ends the period", () => {
     const res = refundScenario('charge-refunded-invoice-intent');
-    assert.deepStrictEqual(res, { before: true, changed: true, status: 'revoked', pro: false });
+    assert.deepStrictEqual(res, { before: true, changed: true, status: 'expired', pro: false });
   });
 
   it('a partial refund leaves Pro on', () => {

@@ -98,6 +98,13 @@ class Gatekeeper_Xp_Pro_Licenses {
 			return $none;
 		}
 
+		// Production wins: a sandbox event never touches a production record.
+		$opEnv        = in_array( $op['env'] ?? null, array( 'production', 'sandbox' ), true ) ? $op['env'] : null;
+		$isSandboxHit = null !== $record && 'sandbox' === $opEnv && ( $record['env'] ?? 'production' ) === 'production';
+		if ( $isSandboxHit ) {
+			return array( 'changed' => false, 'created_key' => false, 'record' => $record );
+		}
+
 		$isReplay = null !== $record && '' !== $event_id && in_array( $event_id, (array) ( $record['event_ids'] ?? array() ), true );
 		if ( $isReplay ) {
 			return array( 'changed' => false, 'created_key' => false, 'record' => $record );
@@ -106,11 +113,17 @@ class Gatekeeper_Xp_Pro_Licenses {
 		$created_key = false;
 		if ( $isGrant ) {
 			if ( null === $record ) {
-				$record = self::new_record( $family_id );
+				$record        = self::new_record( $family_id );
+				$record['env'] = $opEnv ?? 'production';
 			}
 			$created_key = self::grant( $record, $op );
 		} else {
 			self::change( $record, $action, $op );
+		}
+
+		$isProductionOnSandbox = 'production' === $opEnv && ( $record['env'] ?? 'production' ) === 'sandbox';
+		if ( $isProductionOnSandbox ) {
+			$record['env'] = 'production';
 		}
 
 		$record['event_ids'] = self::remember_event( (array) ( $record['event_ids'] ?? array() ), $event_id );
@@ -183,6 +196,22 @@ class Gatekeeper_Xp_Pro_Licenses {
 			return false;
 		}
 		$record['devices'] = array();
+		self::save( $record );
+		return true;
+	}
+
+	/** Admin action: set the record active again and note who did it and when. */
+	public static function restore( string $family_id, int $user_id ): bool {
+		$record = self::get( $family_id );
+		if ( null === $record ) {
+			return false;
+		}
+		$now                = gmdate( 'Y-m-d\TH:i:s\Z' );
+		$record['status']   = 'active';
+		$notes              = (array) ( $record['notes'] ?? array() );
+		$notes[]            = array( 'at' => $now, 'user_id' => $user_id, 'note' => 'Restored by admin.' );
+		$record['notes']    = array_slice( $notes, -self::MAX_EVENTS );
+		$record['updated_at'] = $now;
 		self::save( $record );
 		return true;
 	}
@@ -265,6 +294,47 @@ class Gatekeeper_Xp_Pro_Licenses {
 			&& null === ( $record['expires_at'] ?? null );
 	}
 
+	/** The source of a paid period: "stripe:<sub id>" or "revenuecat:<product id>", or null when the op names none. */
+	private static function period_source_of( array $op ): ?string {
+		$source = (string) ( $op['source'] ?? '' );
+		$refs   = is_array( $op['refs'] ?? null ) ? $op['refs'] : array();
+		$ref    = is_array( $op['ref'] ?? null ) ? $op['ref'] : array();
+		if ( 'stripe' === $source ) {
+			$sub = $refs['sub'] ?? ( ( $ref['type'] ?? '' ) === 'sub' ? ( $ref['id'] ?? null ) : null );
+			return is_string( $sub ) && '' !== $sub ? 'stripe:' . $sub : null;
+		}
+		if ( 'revenuecat' === $source ) {
+			$product = $refs['product_id'] ?? null;
+			return is_string( $product ) && '' !== $product ? 'revenuecat:' . $product : null;
+		}
+		return null;
+	}
+
+	/** The source of a purchase being refunded: "stripe:<payment intent>" or "revenuecat:<product id>". */
+	private static function purchase_source_of( array $op ): ?string {
+		$source = (string) ( $op['source'] ?? '' );
+		if ( 'stripe' === $source ) {
+			$refs = is_array( $op['refs'] ?? null ) ? $op['refs'] : array();
+			$ref  = is_array( $op['ref'] ?? null ) ? $op['ref'] : array();
+			$pi   = $refs['pi'] ?? ( ( $ref['type'] ?? '' ) === 'pi' ? ( $ref['id'] ?? null ) : null );
+			return is_string( $pi ) && '' !== $pi ? 'stripe:' . $pi : null;
+		}
+		return self::period_source_of( $op );
+	}
+
+	/** A later expiry wins; no current expiry means anything usable wins. Equal values go to the newer event. */
+	private static function new_expiry_wins( ?string $current, ?string $new ): bool {
+		if ( null === $new ) {
+			return false;
+		}
+		if ( null === $current ) {
+			return true;
+		}
+		$currentTs = strtotime( $current );
+		$newTs     = strtotime( $new );
+		return false === $currentTs || ( false !== $newTs && $newTs >= $currentTs );
+	}
+
 	/** @return bool whether a new key was created */
 	private static function grant( array &$record, array $op ): bool {
 		$created_key = false;
@@ -279,16 +349,25 @@ class Gatekeeper_Xp_Pro_Licenses {
 		}
 
 		if ( ! self::is_lifetime_active( $record ) ) {
-			$record['plan']       = $plan;
-			$record['expires_at'] = 'lifetime' === $plan ? null : self::iso( $op['expires_at'] ?? null );
+			// A grant is a new purchase, so a revoked record starts a fresh period.
+			if ( ( $record['status'] ?? '' ) === 'revoked' ) {
+				$record['expires_at']    = null;
+				$record['period_source'] = null;
+			}
+			if ( 'lifetime' === $plan ) {
+				$record['plan']            = 'lifetime';
+				$record['expires_at']      = null;
+				$record['lifetime_source'] = self::purchase_source_of( array_merge( $op, array( 'ref' => null ) ) );
+			} else {
+				$new = self::iso( $op['expires_at'] ?? null );
+				if ( self::new_expiry_wins( $record['expires_at'] ?? null, $new ) ) {
+					$record['plan']          = $plan;
+					$record['expires_at']    = $new;
+					$record['period_source'] = self::period_source_of( $op );
+				}
+			}
+			$record['status'] = 'active';
 		}
-		$isLifetimeNow = 'lifetime' === ( $record['plan'] ?? '' );
-		if ( $isLifetimeNow ) {
-			$record['expires_at'] = null;
-		}
-
-		$record['status'] = 'active';
-		$record['env']    = in_array( $op['env'] ?? null, array( 'production', 'sandbox' ), true ) ? $op['env'] : ( $record['env'] ?? 'production' );
 
 		$email = $op['email'] ?? null;
 		$needsEmail = empty( $record['email'] ) && is_string( $email ) && false !== is_email( $email );
@@ -302,25 +381,37 @@ class Gatekeeper_Xp_Pro_Licenses {
 	}
 
 	private static function change( array &$record, string $action, array $op ): void {
+		$status = (string) ( $record['status'] ?? '' );
 		switch ( $action ) {
 			case 'extend':
-				$isRevoked = ( $record['status'] ?? '' ) === 'revoked';
-				if ( $isRevoked || self::is_lifetime_active( $record ) ) {
+				if ( 'revoked' === $status || self::is_lifetime_active( $record ) ) {
 					return;
 				}
 				$expires = self::iso( $op['expires_at'] ?? null );
-				if ( null !== $expires ) {
-					$record['expires_at'] = $expires;
-					$record['status']     = 'active';
+				if ( self::new_expiry_wins( $record['expires_at'] ?? null, $expires ) ) {
+					$record['expires_at']    = $expires;
+					$record['period_source'] = self::period_source_of( $op );
+				}
+				if ( 'expired' === $status ) {
+					$record['status'] = 'active';
 				}
 				return;
 			case 'expire':
-				if ( ! self::is_lifetime_active( $record ) && ( $record['status'] ?? '' ) !== 'revoked' ) {
+				$source    = self::period_source_of( $op );
+				$isCurrent = null !== $source && ( $record['period_source'] ?? null ) === $source;
+				if ( $isCurrent && ! self::is_lifetime_active( $record ) && 'revoked' !== $status ) {
 					$record['status'] = 'expired';
 				}
 				return;
 			case 'revoke':
-				$record['status'] = 'revoked';
+				$purchase   = self::purchase_source_of( $op );
+				$isLifetime = null !== $purchase && ( $record['lifetime_source'] ?? null ) === $purchase;
+				if ( $isLifetime ) {
+					$record['status'] = 'revoked';
+				} elseif ( 'active' === $status && ! self::is_lifetime_active( $record ) ) {
+					// Any other refund ends the paid period; the next invoice.paid or RENEWAL brings it back.
+					$record['status'] = 'expired';
+				}
 				return;
 		}
 	}
