@@ -167,16 +167,17 @@ describe('XP Pro AI: the daily limit', () => {
       $key = grant();
       gemini_reply( 'Socktopus' );
       $first = ai( $key )['status'];
-      $name = 'gk_xppro_ai_${FAMILY}_' . gmdate( 'Ymd' );
-      set_transient( $name, 100 );
+      $name = Gatekeeper_Xp_Pro_Db::ai_counter( '${FAMILY}' );
+      $GLOBALS['wpdb']->counters[ $name ] = 100;
       $over = ai( $key );
-      set_transient( $name, 99 );
+      $after_over = Gatekeeper_Xp_Pro_Db::read( $name );
+      $GLOBALS['wpdb']->counters[ $name ] = 99;
       $last = ai( $key )['status'];
       $next = ai( $key );
       update_option( 'xp_pro_ai_daily_limit', 2 );
-      set_transient( $name, 2 );
+      $GLOBALS['wpdb']->counters[ $name ] = 2;
       $tight = ai( $key );
-      echo json_encode( [ $first, $over, $last, $next, $tight, get_transient( $name ) ] );
+      echo json_encode( [ $first, $over, $last, $next, $tight, Gatekeeper_Xp_Pro_Db::read( $name ), $after_over ] );
     `);
     assert.strictEqual(res[0], 200);
     assert.deepStrictEqual(res[1], { status: 429, data: { error: 'daily_limit' } });
@@ -184,18 +185,39 @@ describe('XP Pro AI: the daily limit', () => {
     assert.deepStrictEqual(res[3], { status: 429, data: { error: 'daily_limit' } });
     assert.deepStrictEqual(res[4], { status: 429, data: { error: 'daily_limit' } });
     assert.strictEqual(res[5], 2);
+    assert.strictEqual(res[6], 100, 'a refused call is handed back');
+  });
+
+  it('the 101st AI call is 429 with the atomic counter', () => {
+    const res = run(`
+      $key = grant();
+      gemini_reply( 'Socktopus' );
+      $codes = [];
+      for ( $i = 0; $i < 101; $i++ ) {
+        $codes[] = ai( $key )['status'];
+        foreach ( array_keys( $GLOBALS['wpdb']->counters ) as $k ) { if ( 0 === strpos( $k, 'gk_xppro_rl_' ) ) { unset( $GLOBALS['wpdb']->counters[ $k ] ); } }
+      }
+      $name = Gatekeeper_Xp_Pro_Db::ai_counter( '${FAMILY}' );
+      $inserts = count( array_filter( $GLOBALS['wpdb']->log, fn( $q ) => false !== strpos( $q, 'ON DUPLICATE KEY UPDATE option_value = option_value + 1' ) ) );
+      echo json_encode( [ array_slice( $codes, 0, 100 ), $codes[100], Gatekeeper_Xp_Pro_Db::read( $name ), $inserts, count( $GLOBALS['gk_transients'] ) ] );
+    `);
+    assert.ok(res[0].every((c) => c === 200));
+    assert.strictEqual(res[1], 429);
+    assert.strictEqual(res[2], 100);
+    assert.ok(res[3] >= 101, 'every call goes through the atomic INSERT');
+    assert.strictEqual(res[4], 0, 'no transient counters remain');
   });
 
   it('the count is per license and a failed Gemini call does not use a call', () => {
     const res = run(`
       $key = grant();
-      $name = 'gk_xppro_ai_${FAMILY}_' . gmdate( 'Ymd' );
+      $name = Gatekeeper_Xp_Pro_Db::ai_counter( '${FAMILY}' );
       gemini_reply( 'Socktopus' );
       ai( $key );
-      $after_ok = get_transient( $name );
+      $after_ok = Gatekeeper_Xp_Pro_Db::read( $name );
       $GLOBALS['gk_http_reply'] = [ 'response' => [ 'code' => 500 ], 'body' => '{}' ];
       $fail = ai( $key );
-      echo json_encode( [ $after_ok, $fail['status'], get_transient( $name ) ] );
+      echo json_encode( [ $after_ok, $fail['status'], Gatekeeper_Xp_Pro_Db::read( $name ) ] );
     `);
     assert.deepStrictEqual(res, [1, 502, 1]);
   });
@@ -204,9 +226,9 @@ describe('XP Pro AI: the daily limit', () => {
     const res = run(`
       $key = grant();
       ai( $key, [ 'input' => [] ] );
-      echo json_encode( get_transient( 'gk_xppro_ai_${FAMILY}_' . gmdate( 'Ymd' ) ) );
+      echo json_encode( Gatekeeper_Xp_Pro_Db::read( Gatekeeper_Xp_Pro_Db::ai_counter( '${FAMILY}' ) ) );
     `);
-    assert.strictEqual(res, false);
+    assert.strictEqual(res, 0);
   });
 });
 

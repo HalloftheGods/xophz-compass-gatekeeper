@@ -190,7 +190,7 @@ describe('XP Pro REST: rate limit', () => {
       $_SERVER['REMOTE_ADDR'] = '203.0.113.8';
       $other = Gatekeeper_Xp_Pro_REST::claim( req( [] ) )->get_status();
       $_SERVER['REMOTE_ADDR'] = '203.0.113.7';
-      foreach ( $GLOBALS['gk_transients'] as $k => $v ) { $GLOBALS['gk_transients'][ $k ]['start'] -= 61; }
+      Gatekeeper_Xp_Pro_Db::$now = time() + 61;
       $later = Gatekeeper_Xp_Pro_REST::claim( req( [] ) )->get_status();
       echo json_encode( [ $same, $other, $later ] );
     `);

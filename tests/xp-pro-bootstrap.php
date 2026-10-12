@@ -155,6 +155,77 @@ if ( ! class_exists( 'WP_REST_Response' ) ) {
 	}
 }
 
+/**
+ * A $wpdb stand-in for the SQL the XP Pro code runs: named locks, the atomic counters and nothing
+ * else. Counters live in $this->counters (never in the in-memory options). Set
+ * $GLOBALS['gk_lock_result'] to '0' to make every GET_LOCK time out, and
+ * $GLOBALS['gk_lock_hook'] to a callable that runs when a lock is taken (to simulate a writer
+ * that got in first). The real SQL is exercised in the loadWp specs (tests/xp-pro-db.test.mjs).
+ */
+class Gk_Fake_Wpdb {
+	public $options  = 'wp_options';
+	public $counters = array();
+	public $locks    = array();
+	public $log      = array();
+	public function prepare( $sql, ...$args ) {
+		$args = ( 1 === count( $args ) && is_array( $args[0] ) ) ? $args[0] : $args;
+		$i    = 0;
+		return preg_replace_callback(
+			'/%[sd]/',
+			function ( $m ) use ( &$i, $args ) {
+				$v = $args[ $i++ ] ?? '';
+				return '%d' === $m[0] ? (string) (int) $v : "'" . addslashes( (string) $v ) . "'";
+			},
+			$sql
+		);
+	}
+	public function esc_like( $text ) {
+		return addcslashes( (string) $text, '_%\\' );
+	}
+	public function get_var( $sql ) {
+		$this->log[] = $sql;
+		if ( preg_match( "/GET_LOCK\\('(.*)', (\\d+)\\)/", $sql, $m ) ) {
+			$result = $GLOBALS['gk_lock_result'] ?? '1';
+			if ( '1' === $result ) {
+				$this->locks[ stripslashes( $m[1] ) ] = true;
+				if ( isset( $GLOBALS['gk_lock_hook'] ) ) {
+					call_user_func( $GLOBALS['gk_lock_hook'], stripslashes( $m[1] ) );
+				}
+			}
+			return $result;
+		}
+		if ( preg_match( "/RELEASE_LOCK\\('(.*)'\\)/", $sql, $m ) ) {
+			unset( $this->locks[ stripslashes( $m[1] ) ] );
+			return '1';
+		}
+		if ( preg_match( "/SELECT option_value FROM \\S+ WHERE option_name = '(.*)'/", $sql, $m ) ) {
+			$name = stripslashes( $m[1] );
+			return array_key_exists( $name, $this->counters ) ? (string) $this->counters[ $name ] : null;
+		}
+		return null;
+	}
+	public function get_col( $sql ) {
+		return array();
+	}
+	public function query( $sql ) {
+		$this->log[] = $sql;
+		if ( preg_match( "/^INSERT INTO \\S+ \\(option_name, option_value, autoload\\) VALUES \\('(.*)', 1, 'no'\\) ON DUPLICATE KEY UPDATE option_value = option_value \\+ 1$/", $sql, $m ) ) {
+			$name                     = stripslashes( $m[1] );
+			$this->counters[ $name ] = ( $this->counters[ $name ] ?? 0 ) + 1;
+			return 1;
+		}
+		if ( preg_match( "/^UPDATE \\S+ SET option_value = GREATEST\\(CAST\\(option_value AS SIGNED\\) - 1, 0\\) WHERE option_name = '(.*)'$/", $sql, $m ) ) {
+			$name = stripslashes( $m[1] );
+			if ( isset( $this->counters[ $name ] ) ) {
+				$this->counters[ $name ] = max( 0, $this->counters[ $name ] - 1 );
+			}
+			return 1;
+		}
+		return 0;
+	}
+}
+$GLOBALS['wpdb'] = new Gk_Fake_Wpdb();
+
 foreach ( glob( dirname( __DIR__ ) . '/includes/class-gatekeeper-xp-pro-*.php' ) as $gk_xp_pro_file ) {
 	require_once $gk_xp_pro_file;
 }

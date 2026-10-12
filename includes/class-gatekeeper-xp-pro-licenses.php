@@ -52,6 +52,33 @@ class Gatekeeper_Xp_Pro_Licenses {
 		return is_array( $record ) ? $record : null;
 	}
 
+	/** A record read straight from the table, for use inside the family lock. */
+	private static function get_fresh( string $family_id ): ?array {
+		if ( self::is_uuid4( $family_id ) ) {
+			Gatekeeper_Xp_Pro_Db::forget_option( self::OPTION_PREFIX . $family_id );
+		}
+		return self::get( $family_id );
+	}
+
+	/**
+	 * Run $fn while holding the family's named lock. Returns the callback's result, or $on_busy when
+	 * the lock was not available in LOCK_WAIT seconds (nothing is written then).
+	 *
+	 * @param mixed $on_busy
+	 * @return mixed
+	 */
+	private static function with_family_lock( string $family_id, callable $fn, $on_busy ) {
+		$name = self::OPTION_PREFIX . $family_id;
+		if ( ! Gatekeeper_Xp_Pro_Db::lock( $name ) ) {
+			return $on_busy;
+		}
+		try {
+			return $fn();
+		} finally {
+			Gatekeeper_Xp_Pro_Db::unlock( $name );
+		}
+	}
+
 	public static function find_by_key( string $key ): ?array {
 		$key = strtoupper( trim( $key ) );
 		if ( ! self::is_license_key( $key ) ) {
@@ -75,9 +102,9 @@ class Gatekeeper_Xp_Pro_Licenses {
 	}
 
 	/**
-	 * Apply one adapter operation to the right family's record.
+	 * Apply one adapter operation to the right family's record, under that family's lock.
 	 *
-	 * @return array{changed: bool, created_key: bool, record: ?array}
+	 * @return array{changed: bool, created_key: bool, record: ?array, lock_failed?: bool}
 	 */
 	public static function apply( array $op, string $event_id ): array {
 		$none   = array( 'changed' => false, 'created_key' => false, 'record' => null );
@@ -86,13 +113,54 @@ class Gatekeeper_Xp_Pro_Licenses {
 			return $none;
 		}
 
+		$family_id = self::family_of( $op );
+		if ( null === $family_id ) {
+			return $none;
+		}
+
+		$busy = array_merge( $none, array( 'lock_failed' => true ) );
+		$result = self::with_family_lock(
+			$family_id,
+			static function () use ( $op, $event_id ) {
+				return self::apply_locked( $op, $event_id );
+			},
+			null
+		);
+		if ( null === $result ) {
+			error_log( sprintf( 'Gatekeeper XP Pro: could not lock family %s within %d s, event %s was not applied.', $family_id, Gatekeeper_Xp_Pro_Db::LOCK_WAIT, '' === $event_id ? '(none)' : $event_id ) );
+			return $busy;
+		}
+		return $result;
+	}
+
+	/** The family an op is about: its own valid family_id, or the family a ref points to. */
+	private static function family_of( array $op ): ?string {
+		$family_id = $op['family_id'] ?? null;
+		if ( is_string( $family_id ) && '' !== $family_id ) {
+			return self::is_uuid4( $family_id ) ? $family_id : null;
+		}
+		$found = 'grant' === ( $op['action'] ?? '' ) ? null : self::resolve_record( $op );
+		return null === $found ? null : (string) $found['family_id'];
+	}
+
+	private static function apply_locked( array $op, string $event_id ): array {
+		$none   = array( 'changed' => false, 'created_key' => false, 'record' => null );
+		$action = (string) ( $op['action'] ?? 'none' );
+
+		// Read again now that the lock is ours: another request may have written since the first look.
 		$record = self::resolve_record( $op );
+		if ( null !== $record ) {
+			$record = self::get_fresh( (string) $record['family_id'] );
+		}
 
 		$isGrant = 'grant' === $action;
 		if ( $isGrant ) {
 			$family_id = (string) ( $op['family_id'] ?? '' );
 			if ( ! self::is_uuid4( $family_id ) ) {
 				return $none;
+			}
+			if ( null === $record ) {
+				$record = self::get_fresh( $family_id );
 			}
 		} elseif ( null === $record ) {
 			return $none;
@@ -159,21 +227,28 @@ class Gatekeeper_Xp_Pro_Licenses {
 		if ( ! self::is_uuid4( $family_id ) || ! self::is_device_id( $device_id ) ) {
 			return new WP_Error( 'invalid_input', 'Invalid family or device id.', array( 'status' => 400 ) );
 		}
-		$record = self::get( $family_id );
-		if ( null === $record ) {
-			return new WP_Error( 'not_found', 'No license for this family.', array( 'status' => 404 ) );
-		}
-		$devices = (array) ( $record['devices'] ?? array() );
-		if ( in_array( $device_id, $devices, true ) ) {
-			return true;
-		}
-		if ( count( $devices ) >= self::MAX_DEVICES ) {
-			return new WP_Error( 'device_limit', 'This license is on 10 devices already.', array( 'status' => 409 ) );
-		}
-		$devices[]         = $device_id;
-		$record['devices'] = $devices;
-		self::save( $record );
-		return true;
+		$busy = new WP_Error( 'busy', 'Try again in a moment.', array( 'status' => 503 ) );
+		return self::with_family_lock(
+			$family_id,
+			static function () use ( $family_id, $device_id ) {
+				$record = self::get_fresh( $family_id );
+				if ( null === $record ) {
+					return new WP_Error( 'not_found', 'No license for this family.', array( 'status' => 404 ) );
+				}
+				$devices = (array) ( $record['devices'] ?? array() );
+				if ( in_array( $device_id, $devices, true ) ) {
+					return true;
+				}
+				if ( count( $devices ) >= self::MAX_DEVICES ) {
+					return new WP_Error( 'device_limit', 'This license is on 10 devices already.', array( 'status' => 409 ) );
+				}
+				$devices[]         = $device_id;
+				$record['devices'] = $devices;
+				self::save( $record );
+				return true;
+			},
+			$busy
+		);
 	}
 
 	/** The shape the app sees. */
@@ -191,29 +266,47 @@ class Gatekeeper_Xp_Pro_Licenses {
 	}
 
 	public static function reset_devices( string $family_id ): bool {
-		$record = self::get( $family_id );
-		if ( null === $record ) {
+		if ( ! self::is_uuid4( $family_id ) ) {
 			return false;
 		}
-		$record['devices'] = array();
-		self::save( $record );
-		return true;
+		return true === self::with_family_lock(
+			$family_id,
+			static function () use ( $family_id ) {
+				$record = self::get_fresh( $family_id );
+				if ( null === $record ) {
+					return false;
+				}
+				$record['devices'] = array();
+				self::save( $record );
+				return true;
+			},
+			false
+		);
 	}
 
 	/** Admin action: set the record active again and note who did it and when. */
 	public static function restore( string $family_id, int $user_id ): bool {
-		$record = self::get( $family_id );
-		if ( null === $record ) {
+		if ( ! self::is_uuid4( $family_id ) ) {
 			return false;
 		}
-		$now                = gmdate( 'Y-m-d\TH:i:s\Z' );
-		$record['status']   = 'active';
-		$notes              = (array) ( $record['notes'] ?? array() );
-		$notes[]            = array( 'at' => $now, 'user_id' => $user_id, 'note' => 'Restored by admin.' );
-		$record['notes']    = array_slice( $notes, -self::MAX_EVENTS );
-		$record['updated_at'] = $now;
-		self::save( $record );
-		return true;
+		return true === self::with_family_lock(
+			$family_id,
+			static function () use ( $family_id, $user_id ) {
+				$record = self::get_fresh( $family_id );
+				if ( null === $record ) {
+					return false;
+				}
+				$now                  = gmdate( 'Y-m-d\TH:i:s\Z' );
+				$record['status']     = 'active';
+				$notes                = (array) ( $record['notes'] ?? array() );
+				$notes[]              = array( 'at' => $now, 'user_id' => $user_id, 'note' => 'Restored by admin.' );
+				$record['notes']      = array_slice( $notes, -self::MAX_EVENTS );
+				$record['updated_at'] = $now;
+				self::save( $record );
+				return true;
+			},
+			false
+		);
 	}
 
 	/** Every record whose purchase email is this address (case-insensitive), for the key recovery mail. */

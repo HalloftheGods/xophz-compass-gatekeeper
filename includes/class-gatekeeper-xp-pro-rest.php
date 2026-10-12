@@ -40,27 +40,14 @@ class Gatekeeper_Xp_Pro_REST {
 	}
 
 	/**
-	 * Fixed-window counter per route and client address. Returns true when this request is over
-	 * the limit; otherwise counts it and returns false.
+	 * Fixed-window counter per route and client address, bumped atomically in the options table.
+	 * Returns true when this request is over the limit. The window is part of the counter name, so
+	 * a new minute (or hour) starts a fresh row.
 	 */
 	public static function rate_limited( string $bucket, int $max, int $window_seconds ): bool {
-		$addr = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : '';
-		$key  = 'gk_xppro_rl_' . preg_replace( '/[^a-z0-9_]/', '', strtolower( $bucket ) ) . '_' . md5( $addr );
-		$now  = time();
-
-		$state = get_transient( $key );
-		$isLive = is_array( $state ) && isset( $state['n'], $state['start'] ) && $now < (int) $state['start'] + $window_seconds;
-		if ( ! $isLive ) {
-			$state = array( 'n' => 0, 'start' => $now );
-		}
-
-		if ( (int) $state['n'] >= $max ) {
-			return true;
-		}
-
-		$state['n'] = (int) $state['n'] + 1;
-		set_transient( $key, $state, max( 1, (int) $state['start'] + $window_seconds - $now ) );
-		return false;
+		$addr    = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+		$counter = Gatekeeper_Xp_Pro_Db::rate_counter( $bucket, $addr, $window_seconds );
+		return Gatekeeper_Xp_Pro_Db::increment( $counter ) > $max;
 	}
 
 	public static function plans( $request = null ): WP_REST_Response {

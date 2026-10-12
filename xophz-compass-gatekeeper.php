@@ -32,6 +32,7 @@ require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-keys.php
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-licenses.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-entitlements.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-route-guard.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-db.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-licenses.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-stripe.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-revenuecat.php';
