@@ -207,6 +207,61 @@ describe('XP Pro REST: rate limit', () => {
   });
 });
 
+describe('XP Pro REST: rate limit buckets (F3)', () => {
+  it('claim buckets are per family', () => {
+    const res = run(`
+      grant( '${FAMILY}' );
+      grant( '${OTHER_FAMILY}' );
+      $a = [];
+      for ( $i = 0; $i < 31; $i++ ) { $a[] = Gatekeeper_Xp_Pro_REST::claim( req( [ 'family_id' => '${FAMILY}', 'device_id' => '${DEVICE}' ] ) )->get_status(); }
+      $b = Gatekeeper_Xp_Pro_REST::claim( req( [ 'family_id' => '${OTHER_FAMILY}', 'device_id' => '${DEVICE}' ] ) )->get_status();
+      // Invented family ids all share the address-only bucket, so they cannot open fresh buckets.
+      $made_up = [];
+      for ( $i = 0; $i < 31; $i++ ) { $made_up[] = Gatekeeper_Xp_Pro_REST::claim( req( [ 'family_id' => sprintf( '3f6c2a1e-8b4d-4c7a-9e2f-%012d', $i ), 'device_id' => '${DEVICE}' ] ) )->get_status(); }
+      echo json_encode( [ $a[29], $a[30], $b, $made_up[29], $made_up[30] ] );
+    `);
+    assert.deepStrictEqual(res, [200, 429, 200, 404, 429]);
+  });
+
+  it('validate buckets follow the key family', () => {
+    const res = run(`
+      $k1 = grant( '${FAMILY}' )['record']['license_key'];
+      $k2 = grant( '${OTHER_FAMILY}' )['record']['license_key'];
+      $codes = [];
+      for ( $i = 0; $i < 31; $i++ ) { $codes[] = Gatekeeper_Xp_Pro_REST::validate( req( [ 'license_key' => $k1, 'device_id' => '${DEVICE}' ] ) )->get_status(); }
+      $other = Gatekeeper_Xp_Pro_REST::validate( req( [ 'license_key' => $k2, 'device_id' => '${DEVICE}' ] ) )->get_status();
+      echo json_encode( [ $codes[29], $codes[30], $other ] );
+    `);
+    assert.deepStrictEqual(res, [200, 429, 200]);
+  });
+
+  it('the resolver is used when present', () => {
+    const res = run(`
+      class Hookshot_Client_Ip {
+        public static $calls = 0;
+        public static function resolve( WP_REST_Request $request ) { self::$calls++; return (string) $request->get_header( 'x_forwarded_for' ); }
+      }
+      $with = function ( $ip ) { $r = req( [] ); $r->set_header( 'X-Forwarded-For', $ip ); return $r; };
+      for ( $i = 0; $i < 30; $i++ ) { Gatekeeper_Xp_Pro_REST::claim( $with( '198.51.100.1' ) ); }
+      $same  = Gatekeeper_Xp_Pro_REST::claim( $with( '198.51.100.1' ) )->get_status();
+      $other = Gatekeeper_Xp_Pro_REST::claim( $with( '198.51.100.2' ) )->get_status();
+      // An empty answer falls back to REMOTE_ADDR.
+      $none  = Gatekeeper_Xp_Pro_REST::client_ip( $with( '' ) );
+      echo json_encode( [ $same, $other, $none, Gatekeeper_Xp_Pro_REST::client_ip( $with( '198.51.100.9' ) ), Hookshot_Client_Ip::$calls > 30 ] );
+    `);
+    assert.deepStrictEqual(res, [429, 400, '203.0.113.7', '198.51.100.9', true]);
+  });
+
+  it('without the resolver the address is REMOTE_ADDR', () => {
+    const res = run(`
+      $r = req( [] );
+      $r->set_header( 'X-Forwarded-For', '198.51.100.9' );
+      echo json_encode( [ class_exists( 'Hookshot_Client_Ip' ), Gatekeeper_Xp_Pro_REST::client_ip( $r ) ] );
+    `);
+    assert.deepStrictEqual(res, [false, '203.0.113.7']);
+  });
+});
+
 describe('XP Pro REST: manage', () => {
   it('manage for a Stripe license posts the customer to billing_portal/sessions', () => {
     const res = run(`

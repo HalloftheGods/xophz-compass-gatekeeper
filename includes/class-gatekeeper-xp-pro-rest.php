@@ -40,18 +40,39 @@ class Gatekeeper_Xp_Pro_REST {
 	}
 
 	/**
-	 * Fixed-window counter per route and client address, bumped atomically in the options table.
-	 * Returns true when this request is over the limit. The window is part of the counter name, so
-	 * a new minute (or hour) starts a fresh row.
+	 * The caller's address: Hookshot_Client_Ip::resolve() when Hookshot is active (it reads
+	 * X-Forwarded-For only from a configured trusted proxy, XOPHZ_HOOKSHOT_TRUSTED_PROXIES), else
+	 * REMOTE_ADDR. Behind Cloudflare without that constant every caller would share one bucket.
 	 */
-	public static function rate_limited( string $bucket, int $max, int $window_seconds ): bool {
-		$addr    = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : '';
-		$counter = Gatekeeper_Xp_Pro_Db::rate_counter( $bucket, $addr, $window_seconds );
+	public static function client_ip( ?WP_REST_Request $request = null ): string {
+		$remote = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+		if ( null !== $request && class_exists( 'Hookshot_Client_Ip' ) ) {
+			$resolved = Hookshot_Client_Ip::resolve( $request );
+			if ( is_string( $resolved ) && '' !== $resolved ) {
+				return $resolved;
+			}
+		}
+		return $remote;
+	}
+
+	/**
+	 * Fixed-window counter per route and client address (claim and validate: per family and address),
+	 * bumped atomically in the options table. Returns true when this request is over the limit. The
+	 * window is part of the counter name, so a new minute (or hour) starts a fresh row.
+	 */
+	public static function rate_limited( string $bucket, int $max, int $window_seconds, ?WP_REST_Request $request = null, string $family_id = '' ): bool {
+		$scope   = self::client_ip( $request ) . '|' . $family_id;
+		$counter = Gatekeeper_Xp_Pro_Db::rate_counter( $bucket, $scope, $window_seconds );
 		return Gatekeeper_Xp_Pro_Db::increment( $counter ) > $max;
 	}
 
+	/** The family to key a bucket on: only one that exists, so inventing ids cannot open fresh buckets. */
+	private static function known_family( string $family_id ): string {
+		return Gatekeeper_Xp_Pro_Licenses::is_uuid4( $family_id ) && null !== Gatekeeper_Xp_Pro_Licenses::get( $family_id ) ? $family_id : '';
+	}
+
 	public static function plans( $request = null ): WP_REST_Response {
-		if ( self::rate_limited( 'plans', self::PER_MINUTE, 60 ) ) {
+		if ( self::rate_limited( 'plans', self::PER_MINUTE, 60, $request instanceof WP_REST_Request ? $request : null ) ) {
 			return self::error( 'rate_limited', 429 );
 		}
 		$plans = apply_filters( 'gatekeeper_xp_pro_plans', array() );
@@ -59,11 +80,11 @@ class Gatekeeper_Xp_Pro_REST {
 	}
 
 	public static function claim( WP_REST_Request $request ): WP_REST_Response {
-		if ( self::rate_limited( 'claim', self::PER_MINUTE, 60 ) ) {
+		$family_id = self::text( $request, 'family_id' );
+		if ( self::rate_limited( 'claim', self::PER_MINUTE, 60, $request, self::known_family( $family_id ) ) ) {
 			return self::error( 'rate_limited', 429 );
 		}
 
-		$family_id = self::text( $request, 'family_id' );
 		$device_id = self::text( $request, 'device_id' );
 		if ( ! Gatekeeper_Xp_Pro_Licenses::is_uuid4( $family_id ) || ! Gatekeeper_Xp_Pro_Licenses::is_device_id( $device_id ) ) {
 			return self::error( 'invalid_input', 400 );
@@ -77,11 +98,12 @@ class Gatekeeper_Xp_Pro_REST {
 	}
 
 	public static function validate( WP_REST_Request $request ): WP_REST_Response {
-		if ( self::rate_limited( 'validate', self::PER_MINUTE, 60 ) ) {
+		$key       = strtoupper( trim( self::text( $request, 'license_key' ) ) );
+		$keyed_to  = Gatekeeper_Xp_Pro_Licenses::find_by_key( $key );
+		if ( self::rate_limited( 'validate', self::PER_MINUTE, 60, $request, null === $keyed_to ? '' : (string) $keyed_to['family_id'] ) ) {
 			return self::error( 'rate_limited', 429 );
 		}
 
-		$key       = strtoupper( trim( self::text( $request, 'license_key' ) ) );
 		$device_id = self::text( $request, 'device_id' );
 		if ( ! Gatekeeper_Xp_Pro_Licenses::is_license_key( $key ) || ! Gatekeeper_Xp_Pro_Licenses::is_device_id( $device_id ) ) {
 			return self::error( 'invalid_input', 400 );
@@ -97,7 +119,7 @@ class Gatekeeper_Xp_Pro_REST {
 
 	/** Always 202 for a well-formed address, so the answer never reveals whether keys exist. */
 	public static function recover( WP_REST_Request $request ): WP_REST_Response {
-		if ( self::rate_limited( 'recover', 5, 3600 ) ) {
+		if ( self::rate_limited( 'recover', 5, 3600, $request ) ) {
 			return self::error( 'rate_limited', 429 );
 		}
 
@@ -119,7 +141,7 @@ class Gatekeeper_Xp_Pro_REST {
 	}
 
 	public static function manage( WP_REST_Request $request ): WP_REST_Response {
-		if ( self::rate_limited( 'manage', self::PER_MINUTE, 60 ) ) {
+		if ( self::rate_limited( 'manage', self::PER_MINUTE, 60, $request ) ) {
 			return self::error( 'rate_limited', 429 );
 		}
 
