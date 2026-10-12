@@ -1,0 +1,22 @@
+{
+  "id": "evt_1QxSubDeleted",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1790000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "customer.subscription.deleted",
+  "data": {
+    "object": {
+      "id": "sub_1QxMonthly01",
+      "object": "subscription",
+      "customer": "cus_Ne4iCg9mH2xQ7a",
+      "status": "canceled",
+      "cancel_at_period_end": false
+    }
+  }
+}

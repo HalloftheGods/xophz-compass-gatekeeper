@@ -1,0 +1,46 @@
+{
+  "id": "evt_1QxCheckoutYearly",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1790000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "checkout.session.completed",
+  "data": {
+    "object": {
+      "id": "cs_test_yearly",
+      "object": "checkout.session",
+      "mode": "subscription",
+      "status": "complete",
+      "payment_status": "no_payment_required",
+      "client_reference_id": null,
+      "customer": "cus_Ne4iCg9mH2xQ7a",
+      "customer_email": null,
+      "customer_details": {
+        "email": "parent@doit.forthexp.com",
+        "name": null
+      },
+      "subscription": {
+        "id": "sub_1QxYearly01",
+        "object": "subscription",
+        "status": "trialing",
+        "trial_end": 1790604800,
+        "current_period_end": 1790604800
+      },
+      "payment_intent": null,
+      "amount_total": 0,
+      "currency": "usd",
+      "metadata": {
+        "product": "doitforthexp",
+        "plan": "yearly",
+        "family_id": "3f6c2a1e-8b4d-4c7a-9e2f-1a2b3c4d5e6f",
+        "device_id": "devicetest01",
+        "plugin_slug": "doitforthexp"
+      }
+    }
+  }
+}

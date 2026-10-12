@@ -6,6 +6,7 @@ import { harness } from '../../xophz-compass/tests/harness/test-framework.mjs';
 import './licenses.test.mjs';
 import './hookshot-fulfilment.test.mjs';
 import './xp-pro-licenses.test.mjs';
+import './xp-pro-stripe.test.mjs';
 
 const results = await harness.run();
 if (results.failed > 0) {

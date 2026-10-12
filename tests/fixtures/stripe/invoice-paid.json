@@ -1,0 +1,39 @@
+{
+  "id": "evt_1QxInvoicePaid",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1790000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "invoice.paid",
+  "data": {
+    "object": {
+      "id": "in_1QxRenewal01",
+      "object": "invoice",
+      "customer": "cus_Ne4iCg9mH2xQ7a",
+      "status": "paid",
+      "paid": true,
+      "amount_paid": 499,
+      "currency": "usd",
+      "subscription": "sub_1QxMonthly01",
+      "lines": {
+        "object": "list",
+        "data": [
+          {
+            "id": "il_1QxLine01",
+            "object": "line_item",
+            "amount": 499,
+            "period": {
+              "start": 1792592000,
+              "end": 1795184000
+            }
+          }
+        ]
+      }
+    }
+  }
+}

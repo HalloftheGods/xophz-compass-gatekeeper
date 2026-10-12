@@ -209,9 +209,15 @@ class Gatekeeper_Xp_Pro_Licenses {
 		if ( is_string( $family_id ) && '' !== $family_id ) {
 			return self::get( $family_id );
 		}
-		$ref = $op['ref'] ?? null;
-		if ( is_array( $ref ) && isset( $ref['type'], $ref['id'] ) ) {
-			return self::find_by_ref( (string) $ref['type'], (string) $ref['id'] );
+		// A fallback ref covers an id we never stored, such as the payment intent of a renewal invoice.
+		foreach ( array( 'ref', 'fallback_ref' ) as $field ) {
+			$ref = $op[ $field ] ?? null;
+			if ( is_array( $ref ) && isset( $ref['type'], $ref['id'] ) ) {
+				$found = self::find_by_ref( (string) $ref['type'], (string) $ref['id'] );
+				if ( null !== $found ) {
+					return $found;
+				}
+			}
 		}
 		return null;
 	}

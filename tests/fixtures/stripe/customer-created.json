@@ -1,0 +1,20 @@
+{
+  "id": "evt_1QxOther",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1790000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "customer.created",
+  "data": {
+    "object": {
+      "id": "cus_Ne4iCg9mH2xQ7a",
+      "object": "customer",
+      "email": "parent@doit.forthexp.com"
+    }
+  }
+}

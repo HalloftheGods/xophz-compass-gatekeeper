@@ -1,0 +1,26 @@
+{
+  "id": "evt_1QxRefundPartial",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1790000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "charge.refunded",
+  "data": {
+    "object": {
+      "id": "ch_3QxCharge01",
+      "object": "charge",
+      "amount": 499,
+      "amount_refunded": 100,
+      "currency": "usd",
+      "customer": "cus_Ne4iCg9mH2xQ7a",
+      "payment_intent": "pi_3QxLifetime01",
+      "refunded": false,
+      "status": "succeeded"
+    }
+  }
+}
