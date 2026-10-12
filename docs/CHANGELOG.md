@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (XP Pro, Do It For The XP)
+- **License store (#6006)**: `Gatekeeper_Xp_Pro_Licenses` keeps one record per family in `gk_xp_pro_{family_id}` (autoload off) with lookup options for the key (`XP-PRO-XXXX-XXXX-XXXX`), Stripe subscription, payment intent and customer ids, and the purchase email. Idempotent grants, a lifetime plan that later subscription events never shorten, expire and revoke that keep the record, the 3 day grace window, 10 devices per license and the last 50 event ids. Never touches `compass_gatekeeper_licenses`.
+- **Stripe and RevenueCat adapters (#6007, #6008)**: `Gatekeeper_Xp_Pro_Stripe` and `Gatekeeper_Xp_Pro_RevenueCat` turn each event into one license operation (pure, tested row by row with real-shaped fixtures). A full refund of a subscription charge revokes by customer when the charge's payment intent was never stored.
+- **Hookshot intake and admin (#6009)**: `Gatekeeper_Xp_Pro_Intake` handles `xophz_hookshot_incoming` only for the two webhook ids in `gatekeeper_xp_pro_webhooks` and only when `Hookshot_Signature::was_verified()`; the id picks the adapter. A new key is emailed once. Settings > Gatekeeper XP Pro holds the webhook ids, `xp_pro_ai_daily_limit` and the license list with Reset devices.
+- **REST (#6010)**: `GET /xp-pro/plans`, `POST /xp-pro/claim`, `/validate`, `/recover` and `/manage`, public and rate limited per client address (30 a minute, recover 5 an hour).
+
 ### Added
 - `Gatekeeper_REST::guard()` and global `gatekeeper_guard()` helper function providing universal cryptographic token and permission verification across all companion plugins.
 - `gatekeeper_route_guard` filter hook for dynamic REST route security registration.

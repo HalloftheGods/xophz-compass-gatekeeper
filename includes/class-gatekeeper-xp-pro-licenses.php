@@ -119,6 +119,7 @@ class Gatekeeper_Xp_Pro_Licenses {
 		self::save( $record );
 		if ( $isGrant ) {
 			self::index_refs( $record, $op );
+			self::index_email( $record );
 		}
 
 		return array( 'changed' => true, 'created_key' => $created_key, 'record' => $record );
@@ -184,6 +185,23 @@ class Gatekeeper_Xp_Pro_Licenses {
 		$record['devices'] = array();
 		self::save( $record );
 		return true;
+	}
+
+	/** Every record whose purchase email is this address (case-insensitive), for the key recovery mail. */
+	public static function find_by_email( string $email ): array {
+		$email = strtolower( trim( $email ) );
+		if ( '' === $email ) {
+			return array();
+		}
+		$families = get_option( self::email_index_name( $email ), array() );
+		$records  = array();
+		foreach ( is_array( $families ) ? $families : array() as $family_id ) {
+			$record = is_string( $family_id ) ? self::get( $family_id ) : null;
+			if ( null !== $record ) {
+				$records[] = $record;
+			}
+		}
+		return $records;
 	}
 
 	/** Every record, for the admin list. Reads straight from the options table. */
@@ -352,6 +370,25 @@ class Gatekeeper_Xp_Pro_Licenses {
 			if ( ! $isTaken ) {
 				update_option( $name, $record['family_id'], false );
 			}
+		}
+	}
+
+	private static function email_index_name( string $email ): string {
+		return self::OPTION_PREFIX . 'email_' . md5( strtolower( trim( $email ) ) );
+	}
+
+	/** Email to family ids, so recovery never scans every license. */
+	private static function index_email( array $record ): void {
+		$email = $record['email'] ?? null;
+		if ( ! is_string( $email ) || '' === $email ) {
+			return;
+		}
+		$name     = self::email_index_name( $email );
+		$families = get_option( $name, array() );
+		$families = is_array( $families ) ? $families : array();
+		if ( ! in_array( $record['family_id'], $families, true ) ) {
+			$families[] = $record['family_id'];
+			update_option( $name, $families, false );
 		}
 	}
 

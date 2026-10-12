@@ -165,6 +165,9 @@ class Gatekeeper_REST extends Xophz_Compass_REST_Controller {
 			)
 		);
 
+		// XP Pro (Do It For The XP): plans, claim, validate, recover, manage
+		Gatekeeper_Xp_Pro_REST::register( $this->namespace );
+
 		// Machine Schema / AI Abilities Declaration
 		register_rest_route(
 			$this->namespace,

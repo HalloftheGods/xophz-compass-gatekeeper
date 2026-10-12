@@ -344,3 +344,18 @@ describe('XP Pro licenses: isolation and hygiene', () => {
     }
   });
 });
+
+describe('XP Pro licenses: email lookup', () => {
+  it('find_by_email is case-insensitive, lists each family once, and ignores unknown addresses', () => {
+    const res = xp(`
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op())}, 'evt_1');
+      Gatekeeper_Xp_Pro_Licenses::apply(${lit(op({ plan: 'yearly' }))}, 'evt_2');
+      echo json_encode([
+        'upper' => count(Gatekeeper_Xp_Pro_Licenses::find_by_email('PARENT@doit.forthexp.com')),
+        'none'  => count(Gatekeeper_Xp_Pro_Licenses::find_by_email('nobody@doit.forthexp.com')),
+        'empty' => count(Gatekeeper_Xp_Pro_Licenses::find_by_email('')),
+      ]);
+    `);
+    assert.deepStrictEqual(res, { upper: 1, none: 0, empty: 0 });
+  });
+});

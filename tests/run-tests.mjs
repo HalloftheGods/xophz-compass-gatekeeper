@@ -9,6 +9,7 @@ import './xp-pro-licenses.test.mjs';
 import './xp-pro-stripe.test.mjs';
 import './xp-pro-revenuecat.test.mjs';
 import './xp-pro-intake.test.mjs';
+import './xp-pro-rest.test.mjs';
 
 const results = await harness.run();
 if (results.failed > 0) {

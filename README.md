@@ -47,6 +47,15 @@ All endpoints are exposed under the namespace `compass/v1/gatekeeper`:
 | `DELETE` | `/compass/v1/gatekeeper/keys/{id}` | Revoke an active key | Admin |
 | `POST` | `/compass/v1/gatekeeper/sponsors/sync` | Sync sponsor status from Hookshot webhook bridge | Admin / Bridge |
 | `GET` | `/compass/v1/gatekeeper/schema` | Machine abilities schema for AI agents | Public |
+| `GET` | `/compass/v1/gatekeeper/xp-pro/plans` | XP Pro plan catalog with `on_sale` flags (filled by the XP plugin through `gatekeeper_xp_pro_plans`) | Public |
+| `POST` | `/compass/v1/gatekeeper/xp-pro/claim` | `{family_id, device_id}`: the family's XP Pro license, and registers the device. 404 `{pro:false}` until a purchase arrives, 409 `device_limit` on an 11th device | Public, 30/min |
+| `POST` | `/compass/v1/gatekeeper/xp-pro/validate` | `{license_key, device_id}`: same shape plus `family_id`, for restoring on a new device | Public, 30/min |
+| `POST` | `/compass/v1/gatekeeper/xp-pro/recover` | `{email}`: emails every key on file for that address. Always 202 for a well-formed address | Public, 5/hour |
+| `POST` | `/compass/v1/gatekeeper/xp-pro/manage` | `{license_key, return_url}`: a Stripe Billing Portal `{url}` or the `{store}` to open | Public, 30/min |
+
+### XP Pro
+
+XP Pro licenses (`XP-PRO-XXXX-XXXX-XXXX`) are per family, not per user, and live in their own options (`gk_xp_pro_{family_id}` plus lookup options). They never pass through `licenses/validate`. Stripe and RevenueCat events arrive through Hookshot (`xophz_hookshot_incoming`) and count only on the two webhook ids saved in Settings > Gatekeeper XP Pro whose request Hookshot verified. The Settings page also holds the AI daily limit and lists the licenses, with a Reset devices button per row.
 
 ### License validation
 
