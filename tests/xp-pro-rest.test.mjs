@@ -348,18 +348,26 @@ describe('XP Pro REST: plans', () => {
 });
 
 describe('XP Pro REST: wiring', () => {
-  it('registers six public routes under the gatekeeper namespace', () => {
+  it('registers six public routes and the admin-only setup routes under the gatekeeper namespace', () => {
     const res = run(`
       class WP_REST_Server { const READABLE = 'GET'; const CREATABLE = 'POST'; }
       $GLOBALS['routes'] = [];
-      function register_rest_route( $ns, $path, $args ) { $GLOBALS['routes'][] = [ $ns, $path, $args[0]['methods'], $args[0]['permission_callback'] ]; }
+      function register_rest_route( $ns, $path, $args ) {
+        foreach ( isset( $args['methods'] ) ? [ $args ] : $args as $a ) {
+          $cb = $a['permission_callback'];
+          $GLOBALS['routes'][] = [ $ns, $path, $a['methods'], is_array( $cb ) ? implode( '::', $cb ) : $cb ];
+        }
+      }
       Gatekeeper_Xp_Pro_REST::register( 'compass/v1/gatekeeper' );
       echo json_encode( $GLOBALS['routes'] );
     `);
     assert.deepStrictEqual(res.map((r) => [r[1], r[2]]), [
       ['/xp-pro/plans', 'GET'], ['/xp-pro/claim', 'POST'], ['/xp-pro/validate', 'POST'], ['/xp-pro/recover', 'POST'], ['/xp-pro/manage', 'POST'], ['/xp-pro/ai', 'POST'],
+      ['/xp-pro/setup/stripe-webhook', 'POST'], ['/xp-pro/settings', 'GET'], ['/xp-pro/settings', 'POST'],
     ]);
-    assert.ok(res.every((r) => r[0] === 'compass/v1/gatekeeper' && r[3] === '__return_true'));
+    assert.ok(res.every((r) => r[0] === 'compass/v1/gatekeeper'));
+    assert.ok(res.slice(0, 6).every((r) => r[3] === '__return_true'));
+    assert.ok(res.slice(6).every((r) => r[3] === 'Gatekeeper_Xp_Pro_Setup::is_admin'), 'setup routes are admin-only');
   });
 
   it('files carry no em dashes', () => {

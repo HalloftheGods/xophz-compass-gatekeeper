@@ -37,6 +37,7 @@ class Gatekeeper_Xp_Pro_REST {
 				)
 			);
 		}
+		Gatekeeper_Xp_Pro_Setup::register( $namespace );
 	}
 
 	/**

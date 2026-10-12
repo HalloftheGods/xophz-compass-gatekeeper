@@ -53,7 +53,7 @@ class Gatekeeper_Xp_Pro_Intake {
 		}
 	}
 
-	/** 'stripe' or 'revenuecat' when the id is a configured XP Pro webhook, otherwise null. */
+	/** 'stripe' or 'revenuecat' when the id is a configured XP Pro webhook (slots stripe, stripe_test, revenuecat), otherwise null. */
 	public static function source_for( $webhook_id ): ?string {
 		$id = (int) $webhook_id;
 		if ( $id <= 0 ) {
@@ -63,8 +63,9 @@ class Gatekeeper_Xp_Pro_Intake {
 		if ( ! is_array( $configured ) ) {
 			return null;
 		}
-		foreach ( array( 'stripe', 'revenuecat' ) as $source ) {
-			if ( (int) ( $configured[ $source ] ?? 0 ) === $id ) {
+		// Live and test Stripe webhooks both feed the Stripe adapter; the event's livemode sets env.
+		foreach ( array( 'stripe' => 'stripe', 'stripe_test' => 'stripe', 'revenuecat' => 'revenuecat' ) as $slot => $source ) {
+			if ( (int) ( $configured[ $slot ] ?? 0 ) === $id ) {
 				return $source;
 			}
 		}
