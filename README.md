@@ -52,10 +52,11 @@ All endpoints are exposed under the namespace `compass/v1/gatekeeper`:
 | `POST` | `/compass/v1/gatekeeper/xp-pro/validate` | `{license_key, device_id}`: same shape plus `family_id`, for restoring on a new device | Public, 30/min |
 | `POST` | `/compass/v1/gatekeeper/xp-pro/recover` | `{email}`: emails every key on file for that address. Always 202 for a well-formed address | Public, 5/hour |
 | `POST` | `/compass/v1/gatekeeper/xp-pro/manage` | `{license_key, return_url}`: a Stripe Billing Portal `{url}` or the `{store}` to open | Public, 30/min |
+| `POST` | `/compass/v1/gatekeeper/xp-pro/ai` | `{license_key, device_id, task, input}`: the Gemini helpers for XP Pro families. `task` is `monster_name`, `checklist`, `full_beast` or `schedule`; 402 `pro_required`, 400 `invalid_input`, 429 `daily_limit` (100 a day per license, option `xp_pro_ai_daily_limit`) or `rate_limited`, 502 `ai_unavailable` | Public, license-checked |
 
 ### XP Pro
 
-XP Pro licenses (`XP-PRO-XXXX-XXXX-XXXX`) are per family, not per user, and live in their own options (`gk_xp_pro_{family_id}` plus lookup options). They never pass through `licenses/validate`. Stripe and RevenueCat events arrive through Hookshot (`xophz_hookshot_incoming`) and count only on the two webhook ids saved in Settings > Gatekeeper XP Pro whose request Hookshot verified. The Settings page also holds the AI daily limit and lists the licenses, with a Reset devices button per row.
+XP Pro licenses (`XP-PRO-XXXX-XXXX-XXXX`) are per family, not per user, and live in their own options (`gk_xp_pro_{family_id}` plus lookup options). They never pass through `licenses/validate`. Stripe and RevenueCat events arrive through Hookshot (`xophz_hookshot_incoming`) and count only on the two webhook ids saved in Settings > Gatekeeper XP Pro whose request Hookshot verified. The AI helpers endpoint takes only a task name and that task's structured fields (strings capped at 200 characters, lists at 20 items); the prompts live in `class-gatekeeper-xp-pro-ai.php` and the Gemini key stays on the server. The Settings page also holds the AI daily limit and lists the licenses, with a Reset devices button per row.
 
 ### License validation
 

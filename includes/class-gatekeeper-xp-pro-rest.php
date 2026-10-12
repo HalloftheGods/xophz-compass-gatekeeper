@@ -16,11 +16,12 @@ class Gatekeeper_Xp_Pro_REST {
 
 	public static function register( string $namespace ): void {
 		$routes = array(
-			'/xp-pro/plans'    => array( WP_REST_Server::READABLE, 'plans' ),
-			'/xp-pro/claim'    => array( WP_REST_Server::CREATABLE, 'claim' ),
-			'/xp-pro/validate' => array( WP_REST_Server::CREATABLE, 'validate' ),
-			'/xp-pro/recover'  => array( WP_REST_Server::CREATABLE, 'recover' ),
-			'/xp-pro/manage'   => array( WP_REST_Server::CREATABLE, 'manage' ),
+			'/xp-pro/plans'    => array( WP_REST_Server::READABLE, __CLASS__, 'plans' ),
+			'/xp-pro/claim'    => array( WP_REST_Server::CREATABLE, __CLASS__, 'claim' ),
+			'/xp-pro/validate' => array( WP_REST_Server::CREATABLE, __CLASS__, 'validate' ),
+			'/xp-pro/recover'  => array( WP_REST_Server::CREATABLE, __CLASS__, 'recover' ),
+			'/xp-pro/manage'   => array( WP_REST_Server::CREATABLE, __CLASS__, 'manage' ),
+			'/xp-pro/ai'       => array( WP_REST_Server::CREATABLE, 'Gatekeeper_Xp_Pro_AI', 'handle' ),
 		);
 
 		foreach ( $routes as $path => $route ) {
@@ -30,7 +31,7 @@ class Gatekeeper_Xp_Pro_REST {
 				array(
 					array(
 						'methods'             => $route[0],
-						'callback'            => array( __CLASS__, $route[1] ),
+						'callback'            => array( $route[1], $route[2] ),
 						'permission_callback' => '__return_true',
 					),
 				)

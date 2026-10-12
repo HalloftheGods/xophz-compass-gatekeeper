@@ -293,7 +293,7 @@ describe('XP Pro REST: plans', () => {
 });
 
 describe('XP Pro REST: wiring', () => {
-  it('registers five public routes under the gatekeeper namespace', () => {
+  it('registers six public routes under the gatekeeper namespace', () => {
     const res = run(`
       class WP_REST_Server { const READABLE = 'GET'; const CREATABLE = 'POST'; }
       $GLOBALS['routes'] = [];
@@ -302,7 +302,7 @@ describe('XP Pro REST: wiring', () => {
       echo json_encode( $GLOBALS['routes'] );
     `);
     assert.deepStrictEqual(res.map((r) => [r[1], r[2]]), [
-      ['/xp-pro/plans', 'GET'], ['/xp-pro/claim', 'POST'], ['/xp-pro/validate', 'POST'], ['/xp-pro/recover', 'POST'], ['/xp-pro/manage', 'POST'],
+      ['/xp-pro/plans', 'GET'], ['/xp-pro/claim', 'POST'], ['/xp-pro/validate', 'POST'], ['/xp-pro/recover', 'POST'], ['/xp-pro/manage', 'POST'], ['/xp-pro/ai', 'POST'],
     ]);
     assert.ok(res.every((r) => r[0] === 'compass/v1/gatekeeper' && r[3] === '__return_true'));
   });
