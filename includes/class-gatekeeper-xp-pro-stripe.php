@@ -34,7 +34,10 @@ class Gatekeeper_Xp_Pro_Stripe {
 
 		switch ( $type ) {
 			case 'checkout.session.completed':
+			case 'checkout.session.async_payment_succeeded':
 				return self::from_checkout( $object, $env, $now );
+			case 'checkout.session.async_payment_failed':
+				return self::from_failed_payment( $object, $env );
 			case 'invoice.paid':
 				return self::from_invoice( $object, $env );
 			case 'customer.subscription.deleted':
@@ -53,6 +56,12 @@ class Gatekeeper_Xp_Pro_Stripe {
 	private static function from_checkout( array $session, string $env, int $now ): array {
 		$meta = is_array( $session['metadata'] ?? null ) ? $session['metadata'] : array();
 		if ( ( $meta['product'] ?? null ) !== self::PRODUCT ) {
+			return self::none();
+		}
+
+		// A delayed payment method completes the session unpaid; the grant waits for async_payment_succeeded.
+		$isPaid = in_array( $session['payment_status'] ?? null, array( 'paid', 'no_payment_required' ), true );
+		if ( ! $isPaid ) {
 			return self::none();
 		}
 
@@ -85,6 +94,28 @@ class Gatekeeper_Xp_Pro_Stripe {
 				'refs'       => $refs,
 			)
 		);
+	}
+
+	/**
+	 * A delayed payment that failed: revoke what that session bought, by payment intent (or by
+	 * subscription for a subscription session). No customer fallback, so a failed attempt never
+	 * touches another purchase, and a purchase that was never granted matches no record.
+	 */
+	private static function from_failed_payment( array $session, string $env ): array {
+		$meta = is_array( $session['metadata'] ?? null ) ? $session['metadata'] : array();
+		if ( ( $meta['product'] ?? null ) !== self::PRODUCT ) {
+			return self::none();
+		}
+
+		$pi  = self::id_of( $session['payment_intent'] ?? null );
+		$sub = self::id_of( $session['subscription'] ?? null );
+		if ( null !== $pi ) {
+			return self::op( 'revoke', $env, array( 'ref' => array( 'type' => 'pi', 'id' => $pi ) ) );
+		}
+		if ( null !== $sub ) {
+			return self::op( 'revoke', $env, array( 'ref' => array( 'type' => 'sub', 'id' => $sub ) ) );
+		}
+		return self::none();
 	}
 
 	/** trial_end, else current_period_end, from an expanded subscription; else a 7 day trial window. */

@@ -1,0 +1,40 @@
+{
+  "id": "evt_1QxAsyncSucceeded",
+  "object": "event",
+  "api_version": "2025-09-30.clover",
+  "created": 1790000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "checkout.session.async_payment_succeeded",
+  "data": {
+    "object": {
+      "id": "cs_test_lifetime_async_ok",
+      "object": "checkout.session",
+      "mode": "payment",
+      "status": "complete",
+      "payment_status": "paid",
+      "client_reference_id": null,
+      "customer": "cus_Ne4iCg9mH2xQ7a",
+      "customer_email": null,
+      "customer_details": {
+        "email": "parent@doit.forthexp.com",
+        "name": null
+      },
+      "subscription": null,
+      "payment_intent": "pi_3QxLifetime01",
+      "amount_total": 7900,
+      "currency": "usd",
+      "metadata": {
+        "product": "doitforthexp",
+        "plan": "lifetime",
+        "family_id": "3f6c2a1e-8b4d-4c7a-9e2f-1a2b3c4d5e6f",
+        "device_id": "devicetest01",
+        "plugin_slug": "doitforthexp"
+      }
+    }
+  }
+}

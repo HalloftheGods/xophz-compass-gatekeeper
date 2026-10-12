@@ -72,6 +72,55 @@ describe('XP Pro Stripe: checkout.session.completed', () => {
   });
 });
 
+describe('XP Pro Stripe: delayed payment methods (F4)', () => {
+  it('an unpaid checkout grants nothing', () => {
+    assert.strictEqual(toOp('checkout-session-completed-lifetime-unpaid').action, 'none');
+    const res = xp(`
+      $e = ${lit(fixture('checkout-session-completed-monthly'))};
+      $none = $e; unset($none['data']['object']['payment_status']);
+      $free = $e; $free['data']['object']['payment_status'] = 'no_payment_required';
+      echo json_encode([Gatekeeper_Xp_Pro_Stripe::to_op($none, ${NOW})['action'], Gatekeeper_Xp_Pro_Stripe::to_op($free, ${NOW})['action']]);
+    `);
+    assert.deepStrictEqual(res, ['none', 'grant']);
+  });
+
+  it('async success grants', () => {
+    const op = toOp('checkout-session-async-payment-succeeded');
+    assert.strictEqual(op.action, 'grant');
+    assert.strictEqual(op.plan, 'lifetime');
+    assert.strictEqual(op.family_id, FAMILY);
+    assert.strictEqual(op.email, 'parent@doit.forthexp.com');
+    assert.deepStrictEqual(op.refs, { pi: 'pi_3QxLifetime01', cus: 'cus_Ne4iCg9mH2xQ7a' });
+  });
+
+  it('async failure of a lifetime revokes', () => {
+    const op = toOp('checkout-session-async-payment-failed');
+    assert.strictEqual(op.action, 'revoke');
+    assert.deepStrictEqual(op.ref, { type: 'pi', id: 'pi_3QxLifetime01' });
+    const res = xp(`
+      $ok = ${lit(fixture('checkout-session-async-payment-succeeded'))};
+      $bad = ${lit(fixture('checkout-session-async-payment-failed'))};
+      $unpaid = ${lit(fixture('checkout-session-completed-lifetime-unpaid'))};
+      $run = fn ( $e ) => Gatekeeper_Xp_Pro_Licenses::apply( Gatekeeper_Xp_Pro_Stripe::to_op( $e, ${NOW} ), Gatekeeper_Xp_Pro_Stripe::event_id( $e ) );
+      $a = $run( $unpaid );
+      $b = $run( $ok );
+      $c = $run( $bad );
+      echo json_encode( [ $a['changed'], $b['record']['status'], $b['record']['plan'], $c['record']['status'] ] );
+    `);
+    assert.deepStrictEqual(res, [false, 'active', 'lifetime', 'revoked']);
+  });
+
+  it('an async failure for a purchase that was never granted changes nothing', () => {
+    const res = xp(`
+      $run = fn ( $e ) => Gatekeeper_Xp_Pro_Licenses::apply( Gatekeeper_Xp_Pro_Stripe::to_op( $e, ${NOW} ), Gatekeeper_Xp_Pro_Stripe::event_id( $e ) );
+      $run( ${lit(fixture('checkout-session-completed-monthly'))} );
+      $r = $run( ${lit(fixture('checkout-session-async-payment-failed'))} );
+      echo json_encode( [ $r['changed'], Gatekeeper_Xp_Pro_Licenses::get( '${FAMILY}' )['status'] ] );
+    `);
+    assert.deepStrictEqual(res, [false, 'active']);
+  });
+});
+
 describe('XP Pro Stripe: renewals and endings', () => {
   it('invoice.paid extends by sub ref to the line period end', () => {
     const op = toOp('invoice-paid');
