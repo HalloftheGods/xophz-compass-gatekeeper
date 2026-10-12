@@ -48,6 +48,16 @@ All endpoints are exposed under the namespace `compass/v1/gatekeeper`:
 | `POST` | `/compass/v1/gatekeeper/sponsors/sync` | Sync sponsor status from Hookshot webhook bridge | Admin / Bridge |
 | `GET` | `/compass/v1/gatekeeper/schema` | Machine abilities schema for AI agents | Public |
 
+### License validation
+
+`POST /licenses/validate` accepts only license keys minted into Gatekeeper's own table (`compass_gatekeeper_licenses`) or the GitHub handle of an active sponsor. Keys are random and unsigned, so a key's format proves nothing: an unknown `CX-` key is refused.
+
+The preview keys `CX-DEV-PREVIEW` and `QUANTUM-VIP` unlock the VIP tier only on a local install, where `wp_get_environment_type()` returns `local` (`WP_ENVIRONMENT_TYPE=local`). Everywhere else they are refused.
+
+### Checkout key ownership
+
+When a forthexp Stripe checkout completes, Gatekeeper mints an `xp_live_` key for the WordPress user named in `metadata.customer_uid`, or else the user whose email matches the checkout. If neither matches, the key is minted with no owner (`user_id` 0), the customer email is stored in the key's `owner_email`, and the webhook id and key id are logged. It never falls back to another account, because the route guard runs a key's requests as its owner.
+
 ---
 
 ## 4. GitHub Sponsors & SaaS Tiers
@@ -69,7 +79,17 @@ Gatekeeper models four distinct access tiers:
 
 ---
 
-## 6. Submodule Information
+## 6. Tests
+
+Unit tests live in `tests/` and run PHP inside the `u-wordpress` Docker container, with in-memory options and no database:
+
+```bash
+node tests/run-tests.mjs
+```
+
+---
+
+## 7. Submodule Information
 
 - **Repository**: `git@github.com:HalloftheGods/xophz-compass-gatekeeper.git`
 - **Submodule Path**: `wp-content/plugins/xophz-compass-gatekeeper`

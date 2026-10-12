@@ -26,9 +26,10 @@ class Gatekeeper_Keys {
 	 * @param array       $scopes     Allowed capability scopes (e.g. ['read:audits', 'verify:licenses']).
 	 * @param string|null $prefix     Key prefix (defaults to 'stargate_').
 	 * @param int|null    $expiry_days Days until expiration, or null for indefinite.
+	 * @param string|null $owner_email Customer email recorded on the key, for keys minted without a WordPress owner (user_id 0).
 	 * @return array{id: string, plain_key: string, name: string, prefix: string, display_key: string, scopes: array, created_at: string}
 	 */
-	public static function generate_key( int $user_id, string $name, array $scopes = array(), ?string $prefix = null, ?int $expiry_days = null ): array {
+	public static function generate_key( int $user_id, string $name, array $scopes = array(), ?string $prefix = null, ?int $expiry_days = null, ?string $owner_email = null ): array {
 		$effective_prefix = ! empty( $prefix ) ? sanitize_key( $prefix ) : self::DEFAULT_PREFIX;
 		if ( substr( $effective_prefix, -1 ) !== '_' && substr( $effective_prefix, -1 ) !== '-' ) {
 			$effective_prefix .= '_';
@@ -46,6 +47,7 @@ class Gatekeeper_Keys {
 		$record = array(
 			'id'           => $key_id,
 			'user_id'      => $user_id,
+			'owner_email'  => $owner_email ? sanitize_email( $owner_email ) : null,
 			'name'         => sanitize_text_field( $name ),
 			'prefix'       => $effective_prefix,
 			'display_key'  => $display_key,
@@ -167,6 +169,7 @@ class Gatekeeper_Keys {
 				'display_key'  => $record['display_key'] ?? '',
 				'scopes'       => $record['scopes'] ?? array(),
 				'user_id'      => $record['user_id'] ?? 0,
+				'owner_email'  => $record['owner_email'] ?? null,
 				'created_at'   => $record['created_at'] ?? '',
 				'expires_at'   => $record['expires_at'] ?? null,
 				'last_used_at' => $record['last_used_at'] ?? null,

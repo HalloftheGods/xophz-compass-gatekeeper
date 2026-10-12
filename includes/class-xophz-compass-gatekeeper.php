@@ -128,22 +128,35 @@ class Xophz_Compass_Gatekeeper extends Xophz_Compass_Plugin_Base {
 			return;
 		}
 
+		$customer_email = (string) ( $session_obj['customer_email'] ?? ( $session_obj['customer_details']['email'] ?? '' ) );
+
 		$user_id = intval( $metadata['customer_uid'] ?? 0 );
-		if ( empty( $user_id ) && ! empty( $session_obj['customer_email'] ) ) {
-			$found_user = get_user_by( 'email', $session_obj['customer_email'] );
+		if ( empty( $user_id ) && $customer_email !== '' ) {
+			$found_user = get_user_by( 'email', $customer_email );
 			if ( $found_user ) {
 				$user_id = $found_user->ID;
 			}
-		}
-		if ( empty( $user_id ) ) {
-			$user_id = 1;
 		}
 
 		$tier   = sanitize_key( $metadata['tier'] ?? 'developer' );
 		$scopes = ! empty( $metadata['scopes'] ) ? array_filter( explode( ',', (string) $metadata['scopes'] ) ) : array( 'xp:read', 'xp:write' );
 		$label  = sprintf( 'forthexp.com SaaS Key (%s)', ucfirst( $tier ) );
 
-		$key_record = Gatekeeper_Keys::generate_key( $user_id, $label, $scopes, 'xp_live' );
+		// No matching WordPress user: mint the key unowned (user_id 0) and record the
+		// customer email on it. Never fall back to another account, because the route
+		// guard authenticates a key's requests as its owner.
+		$key_record = Gatekeeper_Keys::generate_key( $user_id, $label, $scopes, 'xp_live', null, $customer_email ?: null );
+
+		if ( empty( $user_id ) ) {
+			error_log(
+				sprintf(
+					'Gatekeeper: no WordPress user matched the forthexp checkout from webhook %s; minted key %s unowned%s.',
+					$webhook_id,
+					$key_record['id'],
+					$customer_email !== '' ? ' with the customer email recorded' : ' and no customer email'
+				)
+			);
+		}
 
 		do_action( 'xp_subscription_activated', $user_id, $tier, $key_record, $payload );
 	}

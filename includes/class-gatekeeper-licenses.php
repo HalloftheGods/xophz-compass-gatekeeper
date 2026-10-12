@@ -18,6 +18,23 @@ class Gatekeeper_Licenses {
 	const OPTION_LICENSES = 'compass_gatekeeper_licenses';
 
 	/**
+	 * Preview keys that unlock the VIP tier without a database record.
+	 * Honoured only when is_dev_preview_enabled() is true.
+	 */
+	const DEV_PREVIEW_KEYS = array( 'CX-DEV-PREVIEW', 'QUANTUM-VIP' );
+
+	/**
+	 * Whether the developer preview keys are honoured on this site.
+	 *
+	 * True only when the WordPress environment type is 'local'
+	 * (WP_ENVIRONMENT_TYPE constant or environment variable). WordPress
+	 * reports 'production' when nothing is set, so the keys are off by default.
+	 */
+	public static function is_dev_preview_enabled(): bool {
+		return function_exists( 'wp_get_environment_type' ) && wp_get_environment_type() === 'local';
+	}
+
+	/**
 	 * Mint a new license key.
 	 *
 	 * @param string      $tier        Tier slug ('standard', 'solo_sponsor', 'team_power_puff', 'vip_bundle').
@@ -96,9 +113,9 @@ class Gatekeeper_Licenses {
 			}
 		}
 
-		// 2. Developer / preview bypass keys
+		// 2. Developer / preview keys, honoured only on a local development install
 		$upper = strtoupper( $raw );
-		if ( $upper === 'CX-DEV-PREVIEW' || $upper === 'QUANTUM-VIP' ) {
+		if ( in_array( $upper, self::DEV_PREVIEW_KEYS, true ) && self::is_dev_preview_enabled() ) {
 			return array(
 				'valid'        => true,
 				'tier'         => 'vip_bundle',
@@ -113,20 +130,9 @@ class Gatekeeper_Licenses {
 		$all = self::get_all_licenses();
 		$record = $all[ $upper ] ?? null;
 
+		// Only keys minted into this database are valid. License keys carry no
+		// signature, so a key's format proves nothing about whether it was sold.
 		if ( ! $record ) {
-			// Fallback: Check format validation for legacy offline licenses
-			if ( strpos( $upper, 'CX-' ) === 0 && strlen( $upper ) >= 14 ) {
-				$is_vip = strpos( $upper, 'VIP' ) !== false || strpos( $upper, 'MASTER' ) !== false;
-				return array(
-					'valid'        => true,
-					'tier'         => $is_vip ? 'vip_bundle' : 'standard',
-					'is_sponsor'   => false,
-					'github_user'  => null,
-					'nag_silenced' => true,
-					'max_devices'  => $is_vip ? 0 : 3,
-				);
-			}
-
 			return array( 'valid' => false, 'error' => 'Unrecognized license key or inactive sponsorship.' );
 		}
 
