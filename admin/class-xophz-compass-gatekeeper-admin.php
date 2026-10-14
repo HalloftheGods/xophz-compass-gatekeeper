@@ -23,6 +23,7 @@ class Xophz_Compass_Gatekeeper_Admin {
 		add_action( 'admin_post_gatekeeper_xp_pro_save', array( $this, 'handle_save_xp_pro' ) );
 		add_action( 'admin_post_gatekeeper_xp_pro_reset', array( $this, 'handle_reset_xp_pro_devices' ) );
 		add_action( 'admin_post_gatekeeper_xp_pro_restore', array( $this, 'handle_restore_xp_pro' ) );
+		add_action( 'admin_post_gatekeeper_xp_pro_update_license', array( $this, 'handle_update_xp_pro_license' ) );
 	}
 
 	const PAGE_XP_PRO = 'gatekeeper-xp-pro';
@@ -45,6 +46,16 @@ class Xophz_Compass_Gatekeeper_Admin {
 			wp_die( esc_html__( 'Unauthorized access.', 'xophz-compass-gatekeeper' ) );
 		}
 		echo '<div class="wrap"><h1>Gatekeeper XP Pro</h1>';
+		$notice = isset( $_GET['xp_pro_notice'] ) ? sanitize_key( (string) $_GET['xp_pro_notice'] ) : '';
+		if ( 'saved' === $notice ) {
+			echo '<div class="notice notice-success is-dismissible"><p>XP Pro settings saved.</p></div>';
+		} elseif ( 'reset' === $notice ) {
+			echo '<div class="notice notice-success is-dismissible"><p>License devices reset.</p></div>';
+		} elseif ( 'restored' === $notice ) {
+			echo '<div class="notice notice-success is-dismissible"><p>License restored to active status.</p></div>';
+		} elseif ( 'updated' === $notice ) {
+			echo '<div class="notice notice-success is-dismissible"><p>License updated.</p></div>';
+		}
 		$this->render_xp_pro_section();
 		echo '</div>';
 	}
@@ -96,6 +107,22 @@ class Xophz_Compass_Gatekeeper_Admin {
 			Gatekeeper_Xp_Pro_Licenses::restore( $family_id, get_current_user_id() );
 		}
 		$this->back_to_xp_pro( 'restored' );
+	}
+
+	public function handle_update_xp_pro_license(): void {
+		$this->require_admin( 'gatekeeper_xp_pro_update_license' );
+		$family_id = isset( $_POST['family_id'] ) ? sanitize_text_field( wp_unslash( $_POST['family_id'] ) ) : '';
+		if ( Gatekeeper_Xp_Pro_Licenses::is_uuid4( $family_id ) ) {
+			$fields = array(
+				'plan'       => isset( $_POST['plan'] ) ? sanitize_text_field( wp_unslash( $_POST['plan'] ) ) : '',
+				'status'     => isset( $_POST['status'] ) ? sanitize_text_field( wp_unslash( $_POST['status'] ) ) : '',
+				'env'        => isset( $_POST['env'] ) ? sanitize_text_field( wp_unslash( $_POST['env'] ) ) : '',
+				'expires_at' => isset( $_POST['expires_at'] ) ? sanitize_text_field( wp_unslash( $_POST['expires_at'] ) ) : '',
+				'email'      => isset( $_POST['email'] ) ? sanitize_text_field( wp_unslash( $_POST['email'] ) ) : '',
+			);
+			Gatekeeper_Xp_Pro_Licenses::update_admin( $family_id, $fields, get_current_user_id() );
+		}
+		$this->back_to_xp_pro( 'updated' );
 	}
 
 	/** Every write needs manage_options and a valid nonce for its own action. */
@@ -150,18 +177,32 @@ class Xophz_Compass_Gatekeeper_Admin {
 			<p>No XP Pro licenses yet.</p>
 		<?php else : ?>
 			<table class="widefat striped">
-				<thead><tr><th>Key</th><th>Plan</th><th>Status</th><th>Expires</th><th>Env</th><th>Email</th><th>Devices</th><th></th></tr></thead>
+				<thead><tr><th>Key</th><th>Plan</th><th>Status</th><th>Expires (blank = never)</th><th>Env</th><th>Email</th><th>Devices</th><th></th></tr></thead>
 				<tbody>
 				<?php foreach ( $records as $record ) : ?>
+					<?php
+					$form_id = 'gk-lic-' . esc_attr( (string) ( $record['family_id'] ?? '' ) );
+					$choose  = static function ( array $options, string $current ): void {
+						foreach ( $options as $option ) {
+							printf( '<option value="%1$s"%2$s>%1$s</option>', esc_attr( $option ), selected( $current, $option, false ) );
+						}
+					};
+					?>
 					<tr>
 						<td><code><?php echo esc_html( (string) ( $record['license_key'] ?? '' ) ); ?></code></td>
-						<td><?php echo esc_html( (string) ( $record['plan'] ?? '' ) ); ?></td>
-						<td><?php echo esc_html( (string) ( $record['status'] ?? '' ) ); ?></td>
-						<td><?php echo esc_html( (string) ( $record['expires_at'] ?? 'never' ) ); ?></td>
-						<td><?php echo esc_html( (string) ( $record['env'] ?? '' ) ); ?></td>
-						<td><?php echo esc_html( (string) ( $record['email'] ?? '' ) ); ?></td>
+						<td><select form="<?php echo $form_id; ?>" name="plan"><?php $choose( array( 'monthly', 'yearly', 'lifetime' ), (string) ( $record['plan'] ?? '' ) ); ?></select></td>
+						<td><select form="<?php echo $form_id; ?>" name="status"><?php $choose( array( 'active', 'expired', 'revoked' ), (string) ( $record['status'] ?? '' ) ); ?></select></td>
+						<td><input form="<?php echo $form_id; ?>" type="text" name="expires_at" value="<?php echo esc_attr( (string) ( $record['expires_at'] ?? '' ) ); ?>" /></td>
+						<td><select form="<?php echo $form_id; ?>" name="env"><?php $choose( array( 'production', 'sandbox' ), (string) ( $record['env'] ?? '' ) ); ?></select></td>
+						<td><input form="<?php echo $form_id; ?>" type="email" name="email" value="<?php echo esc_attr( (string) ( $record['email'] ?? '' ) ); ?>" /></td>
 						<td><?php echo esc_html( count( (array) ( $record['devices'] ?? array() ) ) ); ?> / <?php echo esc_html( Gatekeeper_Xp_Pro_Licenses::MAX_DEVICES ); ?></td>
 						<td>
+							<form id="<?php echo $form_id; ?>" method="post" action="<?php echo esc_url( $post_url ); ?>" style="display:inline">
+								<input type="hidden" name="action" value="gatekeeper_xp_pro_update_license" />
+								<input type="hidden" name="family_id" value="<?php echo esc_attr( (string) ( $record['family_id'] ?? '' ) ); ?>" />
+								<?php wp_nonce_field( 'gatekeeper_xp_pro_update_license' ); ?>
+								<button type="submit" class="button button-primary button-small">Save</button>
+							</form>
 							<form method="post" action="<?php echo esc_url( $post_url ); ?>" style="display:inline">
 								<input type="hidden" name="action" value="gatekeeper_xp_pro_reset" />
 								<input type="hidden" name="family_id" value="<?php echo esc_attr( (string) ( $record['family_id'] ?? '' ) ); ?>" />

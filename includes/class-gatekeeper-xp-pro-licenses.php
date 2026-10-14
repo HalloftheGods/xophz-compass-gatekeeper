@@ -309,6 +309,63 @@ class Gatekeeper_Xp_Pro_Licenses {
 		);
 	}
 
+	/** Admin action: update editable fields on an XP Pro license record. */
+	public static function update_admin( string $family_id, array $fields, int $user_id ): bool {
+		if ( ! self::is_uuid4( $family_id ) ) {
+			return false;
+		}
+		return true === self::with_family_lock(
+			$family_id,
+			static function () use ( $family_id, $fields, $user_id ) {
+				$record = self::get_fresh( $family_id );
+				if ( null === $record ) {
+					return false;
+				}
+				$plan = (string) ( $fields['plan'] ?? '' );
+				if ( in_array( $plan, array( 'monthly', 'yearly', 'lifetime' ), true ) ) {
+					$record['plan'] = $plan;
+					if ( 'lifetime' === $plan ) {
+						$record['expires_at'] = null;
+					}
+				}
+				$status = (string) ( $fields['status'] ?? '' );
+				if ( in_array( $status, array( 'active', 'expired', 'revoked' ), true ) ) {
+					$record['status'] = $status;
+				}
+				$env = (string) ( $fields['env'] ?? '' );
+				if ( in_array( $env, array( 'production', 'sandbox' ), true ) ) {
+					$record['env'] = $env;
+				}
+				if ( array_key_exists( 'expires_at', $fields ) ) {
+					$exp = trim( (string) $fields['expires_at'] );
+					if ( '' === $exp || 'never' === strtolower( $exp ) ) {
+						$record['expires_at'] = null;
+					} else {
+						$ts = strtotime( $exp );
+						if ( false !== $ts ) {
+							$record['expires_at'] = gmdate( 'Y-m-d\TH:i:s\Z', $ts );
+						}
+					}
+				}
+				if ( array_key_exists( 'email', $fields ) ) {
+					$email = sanitize_email( trim( (string) $fields['email'] ) );
+					$record['email'] = '' !== $email && is_email( $email ) ? $email : null;
+				}
+				$now                  = gmdate( 'Y-m-d\TH:i:s\Z' );
+				$notes                = (array) ( $record['notes'] ?? array() );
+				$notes[]              = array( 'at' => $now, 'user_id' => $user_id, 'note' => 'Updated by admin.' );
+				$record['notes']      = array_slice( $notes, -self::MAX_EVENTS );
+				$record['updated_at'] = $now;
+				self::save( $record );
+				if ( ! empty( $record['email'] ) ) {
+					self::index_email( $record );
+				}
+				return true;
+			},
+			false
+		);
+	}
+
 	/** Every record whose purchase email is this address (case-insensitive), for the key recovery mail. */
 	public static function find_by_email( string $email ): array {
 		$email = strtolower( trim( $email ) );
