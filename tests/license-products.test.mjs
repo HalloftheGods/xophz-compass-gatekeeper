@@ -99,6 +99,24 @@ describe('License products: registry', () => {
     assert.deepStrictEqual(res, { ids: ['xp-pro', 'ok'], bad: null, twin: null, log: [true, true, true, true] });
   });
 
+  it('an int setting may carry whole-number min and max; a bound that is not an integer or min above max skips the product', () => {
+    const res = xp(`
+      ${captureLog}
+      $row = fn( $extra ) => array( 'label' => 'Seats', 'type' => 'int', 'option' => 'seats_opt', 'default' => 5 ) + $extra;
+      gk_register_license_product('bounded', array('label' => 'Bounded', 'settings' => array('seats' => $row( array( 'min' => 2, 'max' => 50 ) ))));
+      gk_register_license_product('min-only', array('label' => 'Min Only', 'settings' => array('seats' => $row( array( 'min' => 0 ) ))));
+      gk_register_license_product('text-bound', array('label' => 'Text Bound', 'settings' => array('seats' => $row( array( 'max' => 'lots' ) ))));
+      gk_register_license_product('flipped', array('label' => 'Flipped', 'settings' => array('seats' => $row( array( 'min' => 9, 'max' => 3 ) ))));
+      $ids = array_keys(Gatekeeper_License_Products::all());
+      ${readLog}
+      $schema = Gatekeeper_License_Products::setting_schema('bounded', 'seats');
+      echo json_encode(['ids' => $ids, 'bounds' => [$schema['min'], $schema['max']],
+        'log' => [str_contains($log, '"text-bound" skipped: setting "seats": max must be an integer'),
+          str_contains($log, '"flipped" skipped: setting "seats": min must not exceed max')]]);
+    `);
+    assert.deepStrictEqual(res, { ids: ['xp-pro', 'bounded', 'min-only'], bounds: [2, 50], log: [true, true] });
+  });
+
   it('by_route_prefix and by_webhook_id find the product and the source', () => {
     const res = xp(`
       ${register}
@@ -379,12 +397,12 @@ describe('License facade and alias', () => {
         'view' => Gatekeeper_Xp_Pro_Licenses::public_view($r['record'], 1790000000) === Gatekeeper_License_Store::public_view('xp-pro', $r['record'], 1790000000),
         'consts' => [Gatekeeper_Xp_Pro_Licenses::MAX_DEVICES, Gatekeeper_Xp_Pro_Licenses::OPTION_PREFIX, Gatekeeper_Xp_Pro_Licenses::GRACE_SECONDS],
         'shape' => [Gatekeeper_Xp_Pro_Licenses::is_license_key($key), Gatekeeper_Xp_Pro_Licenses::is_uuid4('${FAMILY}'), Gatekeeper_Xp_Pro_Licenses::is_device_id('abcd1234')],
-        'alias' => [(new ReflectionClass('Gatekeeper_Xp_Pro_Db'))->getName(), Gatekeeper_Xp_Pro_Db::LOCK_WAIT, Gatekeeper_Xp_Pro_Db::ai_counter('${FAMILY}') === Gatekeeper_License_Db::daily_counter('${FAMILY}')],
+        'alias' => [(new ReflectionClass('Gatekeeper_Xp_Pro_Db'))->getName(), Gatekeeper_Xp_Pro_Db::LOCK_WAIT],
       ]);
     `);
     assert.deepStrictEqual(res, {
       get: true, key: FAMILY, ent: true, view: true, consts: [10, 'gk_xp_pro_', 259200], shape: [true, true, true],
-      alias: ['Gatekeeper_License_Db', 10, true],
+      alias: ['Gatekeeper_License_Db', 10],
     });
   });
 

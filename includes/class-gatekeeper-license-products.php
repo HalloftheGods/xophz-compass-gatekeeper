@@ -370,6 +370,17 @@ class Gatekeeper_License_Products {
 			if ( ! $isRow ) {
 				return sprintf( 'setting "%s" needs label, type (int|bool|string), option and default', $key );
 			}
+			// An int row may carry whole-number bounds (min, max) that the admin form and the settings route enforce.
+			if ( 'int' === $setting['type'] ) {
+				foreach ( array( 'min', 'max' ) as $bound ) {
+					if ( array_key_exists( $bound, $setting ) && ! is_int( $setting[ $bound ] ) ) {
+						return sprintf( 'setting "%s": %s must be an integer', $key, $bound );
+					}
+				}
+				if ( isset( $setting['min'], $setting['max'] ) && $setting['min'] > $setting['max'] ) {
+					return sprintf( 'setting "%s": min must not exceed max', $key );
+				}
+			}
 		}
 		$strings = $p['strings'];
 		if ( ! is_string( $strings['key_email_subject'] ?? null ) || ! is_string( $strings['support_line'] ?? null ) ) {

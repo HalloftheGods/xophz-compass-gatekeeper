@@ -85,14 +85,13 @@ class Gatekeeper_License_Db {
 		return self::RATE_PREFIX . preg_replace( '/[^a-z0-9_]/', '', strtolower( $bucket ) ) . '_' . md5( $scope ) . '_' . $start;
 	}
 
-	/** Counter name of one account's calls for the current UTC day. */
+	/**
+	 * Counter name of one account's calls for the current UTC day. Nothing in Gatekeeper bumps it any
+	 * more (the XP plugin's AI route counts through gatekeeper_counter_bump()); the prefix stays so
+	 * cleanup_counters() still sweeps the rows the old in-Gatekeeper AI route left behind.
+	 */
 	public static function daily_counter( string $scope ): string {
 		return self::AI_PREFIX . $scope . '_' . gmdate( 'Ymd', self::now() );
-	}
-
-	/** The pre-product name of daily_counter(); kept for the XP Pro AI route until it moves. */
-	public static function ai_counter( string $family_id ): string {
-		return self::daily_counter( $family_id );
 	}
 
 	/**

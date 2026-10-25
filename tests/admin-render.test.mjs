@@ -72,7 +72,7 @@ const PRELUDE = `
       'forever' => array( 'price' => 9.00, 'mode' => 'payment', 'interval' => null, 'trial_days' => 0, 'store_product_id' => 'test_forever', 'on_sale' => true ),
     ),
     'settings' => array(
-      'seats'   => array( 'label' => 'Seats per site', 'type' => 'int', 'option' => 'test_seats', 'default' => 5, 'min' => 2 ),
+      'seats'   => array( 'label' => 'Seats per site', 'type' => 'int', 'option' => 'test_seats', 'default' => 5, 'min' => 2, 'max' => 20 ),
       'beta'    => array( 'label' => 'Beta features', 'type' => 'bool', 'option' => 'test_beta', 'default' => false ),
       'tagline' => array( 'label' => 'Tagline', 'type' => 'string', 'option' => 'test_tagline', 'default' => 'Hello' ),
     ),
@@ -194,7 +194,7 @@ describe('Gatekeeper Licenses page: settings and webhook ids from the schema', (
     const testSection = section(html, 'test');
     const testInputs = inputs(testSection);
     const seats = testInputs.find((i) => i.name === 'seats');
-    assert.deepStrictEqual([seats.type, seats.value, seats.min], ['number', '8', '2']);
+    assert.deepStrictEqual([seats.type, seats.value, seats.min, seats.max], ['number', '8', '2', '20']);
     assert.deepStrictEqual(testInputs.filter((i) => i.name === 'beta').map((i) => i.type + ':' + i.value + ':' + (i.checked || '')), ['hidden:0:', 'checkbox:1:']);
     const tagline = testInputs.find((i) => i.name === 'tagline');
     assert.deepStrictEqual([tagline.type, tagline.value], ['text', 'Hello']);
@@ -420,6 +420,17 @@ describe('Gatekeeper Licenses page: handlers', () => {
       echo json_encode( array( $below, $junk, Gatekeeper_License_Products::read_setting( 'test', 'beta' ), get_option( 'xp_pro_lifetime_on_sale', 'unset' ) ) );
     `);
     assert.deepStrictEqual(res, [[100, 6], [100, 6], true, 'unset']);
+  });
+
+  it('an int setting posted above the schema maximum keeps the old value, and the maximum itself is stored', () => {
+    const res = run(`
+      update_option( 'test_seats', 6 );
+      gk_post( 'handle_save_xp_pro', array( 'product' => 'test', 'seats' => '21' ) );
+      $above = get_option( 'test_seats' );
+      gk_post( 'handle_save_xp_pro', array( 'product' => 'test', 'seats' => '20' ) );
+      echo json_encode( array( $above, get_option( 'test_seats' ) ) );
+    `);
+    assert.deepStrictEqual(res, [6, 20]);
   });
 
   it('a form that posts no stripe_test slot (the old form, or the legacy helper) leaves a wired test webhook alone', () => {

@@ -105,7 +105,7 @@ describe('XP Pro db: counters on the SQL stand-in', () => {
       $b = Gatekeeper_License_Db::rate_counter('Claim', '203.0.113.7', 60);
       Gatekeeper_License_Db::$now = 1790000110;
       $c = Gatekeeper_License_Db::rate_counter('Claim', '203.0.113.7', 60);
-      echo json_encode([$a === $b, $a === $c, $a, Gatekeeper_License_Db::ai_counter('${FAMILY}')]);
+      echo json_encode([$a === $b, $a === $c, $a, Gatekeeper_License_Db::daily_counter('${FAMILY}')]);
     `);
     assert.strictEqual(res[0], true);
     assert.strictEqual(res[1], false);

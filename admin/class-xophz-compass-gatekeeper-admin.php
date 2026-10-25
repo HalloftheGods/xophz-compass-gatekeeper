@@ -102,7 +102,7 @@ class Xophz_Compass_Gatekeeper_Admin {
 	/**
 	 * Save one product's settings form. Webhook ids are positive integers (0 means not set) and only
 	 * the slots the form posted change; an int setting below its minimum (1 unless the schema row says
-	 * otherwise) keeps the old value; a setting the form did not post is left alone. Each setting is
+	 * otherwise) or above the schema row's maximum keeps the old value; a setting the form did not post is left alone. Each setting is
 	 * stored through the product's settings schema, in the option the schema names.
 	 */
 	public static function save_product_settings( string $product_id, array $input ): void {
@@ -127,7 +127,7 @@ class Xophz_Compass_Gatekeeper_Admin {
 			$value = $input[ $key ];
 			if ( 'int' === $schema['type'] ) {
 				$int = filter_var( trim( (string) $value ), FILTER_VALIDATE_INT );
-				if ( false === $int || $int < (int) ( $schema['min'] ?? 1 ) ) {
+				if ( false === $int || $int < (int) ( $schema['min'] ?? 1 ) || ( isset( $schema['max'] ) && $int > (int) $schema['max'] ) ) {
 					continue;
 				}
 				$value = $int;
@@ -338,7 +338,8 @@ class Xophz_Compass_Gatekeeper_Admin {
 			printf( '<input type="hidden" name="%s" value="0" />', esc_attr( $key ) );
 			printf( '<input id="%s" name="%s" type="checkbox" value="1"%s />', esc_attr( $dom ), esc_attr( $key ), $value ? ' checked="checked"' : '' );
 		} elseif ( 'int' === $schema['type'] ) {
-			printf( '<input id="%s" name="%s" type="number" min="%d" value="%s" class="small-text" />', esc_attr( $dom ), esc_attr( $key ), (int) ( $schema['min'] ?? 1 ), esc_attr( (string) $value ) );
+			$max_attr = isset( $schema['max'] ) ? sprintf( ' max="%d"', (int) $schema['max'] ) : '';
+			printf( '<input id="%s" name="%s" type="number" min="%d"%s value="%s" class="small-text" />', esc_attr( $dom ), esc_attr( $key ), (int) ( $schema['min'] ?? 1 ), $max_attr, esc_attr( (string) $value ) );
 		} else {
 			printf( '<input id="%s" name="%s" type="text" value="%s" class="regular-text" />', esc_attr( $dom ), esc_attr( $key ), esc_attr( (string) $value ) );
 		}
