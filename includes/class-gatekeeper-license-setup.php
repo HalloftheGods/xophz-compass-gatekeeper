@@ -1,7 +1,12 @@
 <?php
 /**
- * XP Pro setup API for administrators: wires the Stripe webhook end to end and reads or writes
- * the XP Pro settings, so the whole setup can be done over REST.
+ * License setup API for administrators: wires a product's Stripe webhook end to end and reads or
+ * writes the product's settings, so the whole setup can be done over REST.
+ *
+ * For each product in Gatekeeper_License_Products the routes live at
+ * /compass/v1/gatekeeper/{route_prefix}/setup/stripe-webhook and {route_prefix}/settings. The
+ * option names come from the product (webhooks_option, stripe_setup_option); the settings are the
+ * product's settings schema, read and written through Gatekeeper_License_Products.
  *
  * The Stripe secret key and the webhook signing secret stay on the server: the key is resolved
  * through Bazaar (Settings > Connectors), the signing secret Stripe returns goes straight into
@@ -14,9 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Gatekeeper_Xp_Pro_Setup {
-
-	const OPTION_STRIPE_SETUP = 'gatekeeper_xp_pro_stripe_setup';
+class Gatekeeper_License_Setup {
 
 	const STRIPE_EVENTS = array(
 		'checkout.session.completed',
@@ -28,32 +31,53 @@ class Gatekeeper_Xp_Pro_Setup {
 		'charge.dispute.created',
 	);
 
+	/** The webhook slots a settings write may set (0 clears one). */
+	const WEBHOOK_SLOTS = array( 'stripe', 'stripe_test', 'revenuecat' );
+
+	/** Response and request names a product setting may not shadow. */
+	const RESERVED = array( 'webhooks', 'stripe_setup', 'trusted_redirect_domains', 'siteurl', 'home' );
+
+	/** The range an int setting must stay inside unless its schema row names its own min and max. */
+	const INT_MIN = 1;
+	const INT_MAX = 10000;
+
 	public static function register( string $namespace ): void {
-		register_rest_route(
-			$namespace,
-			'/xp-pro/setup/stripe-webhook',
-			array(
-				'methods'             => 'POST',
-				'callback'            => array( __CLASS__, 'stripe_webhook' ),
-				'permission_callback' => array( __CLASS__, 'is_admin' ),
-			)
-		);
-		register_rest_route(
-			$namespace,
-			'/xp-pro/settings',
-			array(
-				array(
-					'methods'             => 'GET',
-					'callback'            => array( __CLASS__, 'get_settings' ),
-					'permission_callback' => array( __CLASS__, 'is_admin' ),
-				),
+		foreach ( Gatekeeper_License_Products::all() as $product ) {
+			$id     = $product['id'];
+			$prefix = '/' . $product['route_prefix'];
+
+			register_rest_route(
+				$namespace,
+				$prefix . '/setup/stripe-webhook',
 				array(
 					'methods'             => 'POST',
-					'callback'            => array( __CLASS__, 'update_settings' ),
+					'callback'            => static function ( $request ) use ( $id ) {
+						return Gatekeeper_License_Setup::stripe_webhook( $id, $request );
+					},
 					'permission_callback' => array( __CLASS__, 'is_admin' ),
-				),
-			)
-		);
+				)
+			);
+			register_rest_route(
+				$namespace,
+				$prefix . '/settings',
+				array(
+					array(
+						'methods'             => 'GET',
+						'callback'            => static function ( $request = null ) use ( $id ) {
+							return Gatekeeper_License_Setup::get_settings( $id, $request );
+						},
+						'permission_callback' => array( __CLASS__, 'is_admin' ),
+					),
+					array(
+						'methods'             => 'POST',
+						'callback'            => static function ( $request ) use ( $id ) {
+							return Gatekeeper_License_Setup::update_settings( $id, $request );
+						},
+						'permission_callback' => array( __CLASS__, 'is_admin' ),
+					),
+				)
+			);
+		}
 	}
 
 	public static function is_admin(): bool {
@@ -61,14 +85,18 @@ class Gatekeeper_Xp_Pro_Setup {
 	}
 
 	/**
-	 * POST /xp-pro/setup/stripe-webhook {mode: 'test'|'live', rotate?: bool}
+	 * POST /{route_prefix}/setup/stripe-webhook {mode: 'test'|'live', rotate?: bool}
 	 *
 	 * Creates an incoming Hookshot webhook, registers it as a Stripe webhook endpoint for the
-	 * XP Pro events, stores Stripe's signing secret in Hookshot, and records the webhook id in
-	 * gatekeeper_xp_pro_webhooks (slot stripe_test or stripe). Calling it again returns the
+	 * license events, stores Stripe's signing secret in Hookshot, and records the webhook id in
+	 * the product's webhooks_option (slot stripe_test or stripe). Calling it again returns the
 	 * existing setup unless rotate is true.
 	 */
-	public static function stripe_webhook( WP_REST_Request $request ): WP_REST_Response {
+	public static function stripe_webhook( string $product_id, WP_REST_Request $request ): WP_REST_Response {
+		$product = Gatekeeper_License_Products::get( $product_id );
+		if ( null === $product ) {
+			return new WP_REST_Response( array( 'error' => 'not_found' ), 404 );
+		}
 		$mode   = 'live' === $request->get_param( 'mode' ) ? 'live' : 'test';
 		$rotate = (bool) $request->get_param( 'rotate' );
 
@@ -88,7 +116,7 @@ class Gatekeeper_Xp_Pro_Setup {
 			);
 		}
 
-		$setups   = self::stripe_setups();
+		$setups   = self::stripe_setups( $product );
 		$existing = $setups[ $mode ] ?? null;
 		$hasLive  = is_array( $existing ) && ! empty( $existing['webhook_id'] ) && get_post( (int) $existing['webhook_id'] );
 		if ( $hasLive && ! $rotate ) {
@@ -101,7 +129,7 @@ class Gatekeeper_Xp_Pro_Setup {
 
 		$webhook_id = wp_insert_post(
 			array(
-				'post_title'  => sprintf( 'XP Pro Stripe (%s)', $mode ),
+				'post_title'  => sprintf( '%s Stripe (%s)', $product['label'], $mode ),
 				'post_type'   => 'compass_webhook',
 				'post_status' => 'publish',
 			)
@@ -117,7 +145,7 @@ class Gatekeeper_Xp_Pro_Setup {
 		$endpoint_url = Xophz_Compass_Hookshot_REST::receive_url( $webhook_id );
 		$body         = array(
 			'url'         => $endpoint_url,
-			'description' => 'Do It For The XP: XP Pro (Gatekeeper via Hookshot)',
+			'description' => sprintf( '%s: %s (Gatekeeper via Hookshot)', $product['app_name'], $product['label'] ),
 		);
 		foreach ( self::STRIPE_EVENTS as $i => $event ) {
 			$body[ "enabled_events[{$i}]" ] = $event;
@@ -137,37 +165,45 @@ class Gatekeeper_Xp_Pro_Setup {
 
 		Hookshot_Webhook_Secrets::save( $webhook_id, array( 'signing_secret' => (string) $created['secret'] ) );
 
-		$record           = array(
+		$record          = array(
 			'webhook_id'         => (int) $webhook_id,
 			'stripe_endpoint_id' => (string) $created['id'],
 			'livemode'           => ! empty( $created['livemode'] ),
 			'created_at'         => gmdate( 'c' ),
 		);
 		$setups[ $mode ] = $record;
-		update_option( self::OPTION_STRIPE_SETUP, $setups, false );
+		update_option( $product['stripe_setup_option'], $setups, false );
 
-		$webhooks = self::webhook_option();
+		$webhooks = self::webhook_option( $product );
 		$webhooks[ 'live' === $mode ? 'stripe' : 'stripe_test' ] = (int) $webhook_id;
-		update_option( Gatekeeper_Xp_Pro_Intake::OPTION_WEBHOOKS, $webhooks, false );
+		update_option( $product['webhooks_option'], $webhooks, false );
 
 		return new WP_REST_Response( self::describe( $mode, $record, true ), 201 );
 	}
 
-	/** GET /xp-pro/settings */
-	public static function get_settings( $request = null ): WP_REST_Response {
-		return new WP_REST_Response( self::settings_view(), 200 );
+	/** GET /{route_prefix}/settings */
+	public static function get_settings( string $product_id, $request = null ): WP_REST_Response {
+		if ( null === Gatekeeper_License_Products::get( $product_id ) ) {
+			return new WP_REST_Response( array( 'error' => 'not_found' ), 404 );
+		}
+		return new WP_REST_Response( self::settings_view( $product_id ), 200 );
 	}
 
 	/**
-	 * POST /xp-pro/settings with any of:
+	 * POST /{route_prefix}/settings with any of:
 	 * - webhooks: {stripe?, stripe_test?, revenuecat?} positive ints (0 clears a slot)
-	 * - ai_daily_limit: int 1..10000
-	 * - lifetime_on_sale: bool
+	 * - one field per setting of the product's schema (xp-pro: ai_daily_limit int 1..10000,
+	 *   lifetime_on_sale bool). An int setting stays inside its row's min and max, 1..10000 when
+	 *   the row names none.
 	 *
 	 * Site-wide security settings (the redirect allowlist, the site URL) are not writable here;
 	 * an administrator sets them in wp-admin.
 	 */
-	public static function update_settings( WP_REST_Request $request ): WP_REST_Response {
+	public static function update_settings( string $product_id, WP_REST_Request $request ): WP_REST_Response {
+		$product = Gatekeeper_License_Products::get( $product_id );
+		if ( null === $product ) {
+			return new WP_REST_Response( array( 'error' => 'not_found' ), 404 );
+		}
 		$errors = array();
 
 		$webhooks = $request->get_param( 'webhooks' );
@@ -175,8 +211,8 @@ class Gatekeeper_Xp_Pro_Setup {
 			if ( ! is_array( $webhooks ) ) {
 				$errors[] = 'webhooks must be an object';
 			} else {
-				$current = self::webhook_option();
-				foreach ( array( 'stripe', 'stripe_test', 'revenuecat' ) as $slot ) {
+				$current = self::webhook_option( $product );
+				foreach ( self::WEBHOOK_SLOTS as $slot ) {
 					if ( array_key_exists( $slot, $webhooks ) ) {
 						$id = (int) $webhooks[ $slot ];
 						if ( $id < 0 ) {
@@ -191,47 +227,69 @@ class Gatekeeper_Xp_Pro_Setup {
 					}
 				}
 				if ( empty( $errors ) ) {
-					update_option( Gatekeeper_Xp_Pro_Intake::OPTION_WEBHOOKS, $current, false );
+					update_option( $product['webhooks_option'], $current, false );
 				}
 			}
 		}
 
-		$limit = $request->get_param( 'ai_daily_limit' );
-		if ( null !== $limit ) {
-			$limit = (int) $limit;
-			if ( $limit < 1 || $limit > 10000 ) {
-				$errors[] = 'ai_daily_limit must be between 1 and 10000';
-			} else {
-				update_option( 'xp_pro_ai_daily_limit', $limit );
+		foreach ( $product['settings'] as $key => $schema ) {
+			$value = in_array( $key, self::RESERVED, true ) ? null : $request->get_param( $key );
+			if ( null === $value ) {
+				continue;
 			}
-		}
-
-		$on_sale = $request->get_param( 'lifetime_on_sale' );
-		if ( null !== $on_sale ) {
-			update_option( 'xp_pro_lifetime_on_sale', $on_sale ? '1' : '0' );
+			$problem = self::setting_problem( $key, $schema, $value );
+			if ( null !== $problem ) {
+				$errors[] = $problem;
+				continue;
+			}
+			Gatekeeper_License_Products::write_setting( $product_id, $key, $value );
 		}
 
 		if ( ! empty( $errors ) ) {
-			return new WP_REST_Response( array( 'error' => 'invalid_input', 'messages' => $errors, 'settings' => self::settings_view() ), 400 );
+			return new WP_REST_Response( array( 'error' => 'invalid_input', 'messages' => $errors, 'settings' => self::settings_view( $product_id ) ), 400 );
 		}
-		return new WP_REST_Response( self::settings_view(), 200 );
+		return new WP_REST_Response( self::settings_view( $product_id ), 200 );
 	}
 
-	public static function settings_view(): array {
-		return array(
-			'webhooks'                 => self::webhook_option(),
-			'stripe_setup'             => array_map(
+	/** Why a posted value cannot be stored for this schema row, or null when it can. */
+	private static function setting_problem( string $key, array $schema, $value ): ?string {
+		if ( 'int' === $schema['type'] ) {
+			$min = isset( $schema['min'] ) ? (int) $schema['min'] : self::INT_MIN;
+			$max = isset( $schema['max'] ) ? (int) $schema['max'] : self::INT_MAX;
+			$int = (int) $value;
+			return $int < $min || $int > $max ? sprintf( '%s must be between %d and %d', $key, $min, $max ) : null;
+		}
+		if ( 'bool' === $schema['type'] ) {
+			$isBool = is_bool( $value ) || null !== filter_var( $value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+			return $isBool ? null : sprintf( '%s must be true or false', $key );
+		}
+		return is_scalar( $value ) ? null : sprintf( '%s must be text', $key );
+	}
+
+	/** The settings response: webhooks, the Stripe setup, the product's own settings, then the read-only site values. */
+	public static function settings_view( string $product_id ): array {
+		$product = Gatekeeper_License_Products::get( $product_id );
+		if ( null === $product ) {
+			return array();
+		}
+		$view = array(
+			'webhooks'     => self::webhook_option( $product ),
+			'stripe_setup' => array_map(
 				static function ( $r ) {
 					return is_array( $r ) ? array_intersect_key( $r, array_flip( array( 'webhook_id', 'stripe_endpoint_id', 'livemode', 'created_at' ) ) ) : $r;
 				},
-				self::stripe_setups()
+				self::stripe_setups( $product )
 			),
-			'ai_daily_limit'           => (int) get_option( 'xp_pro_ai_daily_limit', 100 ),
-			'lifetime_on_sale'         => ! in_array( strtolower( (string) get_option( 'xp_pro_lifetime_on_sale', '1' ) ), array( '', '0', 'false', 'no', 'off' ), true ),
-			'trusted_redirect_domains' => self::trusted_domains(),
-			'siteurl'                  => (string) get_option( 'siteurl', '' ),
-			'home'                     => (string) get_option( 'home', '' ),
 		);
+		foreach ( Gatekeeper_License_Products::settings( $product_id ) as $key => $value ) {
+			if ( ! in_array( $key, self::RESERVED, true ) ) {
+				$view[ $key ] = $value;
+			}
+		}
+		$view['trusted_redirect_domains'] = self::trusted_domains();
+		$view['siteurl']                  = (string) get_option( 'siteurl', '' );
+		$view['home']                     = (string) get_option( 'home', '' );
+		return $view;
 	}
 
 	/** Read-only: shown so an administrator can see whether the app's host is allowed. */
@@ -257,9 +315,9 @@ class Gatekeeper_Xp_Pro_Setup {
 
 	private static function missing_dependencies(): string {
 		$needed = array(
-			'Xophz_Bazaar_Stripe_Key'      => 'Bazaar',
-			'Hookshot_Webhook_Secrets'     => 'Hookshot',
-			'Xophz_Compass_Hookshot_REST'  => 'Hookshot',
+			'Xophz_Bazaar_Stripe_Key'     => 'Bazaar',
+			'Hookshot_Webhook_Secrets'    => 'Hookshot',
+			'Xophz_Compass_Hookshot_REST' => 'Hookshot',
 		);
 		foreach ( $needed as $class => $plugin ) {
 			if ( ! class_exists( $class ) ) {
@@ -299,13 +357,13 @@ class Gatekeeper_Xp_Pro_Setup {
 		return is_array( $decoded ) ? $decoded : array( 'error' => array( 'message' => 'Stripe returned an unreadable response.' ) );
 	}
 
-	private static function stripe_setups(): array {
-		$setups = get_option( self::OPTION_STRIPE_SETUP, array() );
+	private static function stripe_setups( array $product ): array {
+		$setups = get_option( $product['stripe_setup_option'], array() );
 		return is_array( $setups ) ? $setups : array();
 	}
 
-	private static function webhook_option(): array {
-		$value = get_option( Gatekeeper_Xp_Pro_Intake::OPTION_WEBHOOKS, array() );
+	private static function webhook_option( array $product ): array {
+		$value = get_option( $product['webhooks_option'], array() );
 		return is_array( $value ) ? $value : array();
 	}
 }

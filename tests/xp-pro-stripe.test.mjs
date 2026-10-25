@@ -378,20 +378,9 @@ describe('License Stripe: a second product', () => {
   });
 });
 
-describe('License Stripe: the XP Pro wrapper', () => {
-  it('Gatekeeper_Xp_Pro_Stripe keeps its old signature and answers with the xp-pro product', () => {
-    const res = xp(`
-      $e = ${lit(fixture('checkout-session-completed-monthly'))};
-      $op = Gatekeeper_Xp_Pro_Stripe::to_op( $e, ${NOW} );
-      echo json_encode( [ $op['action'], $op['plan'], $op['family_id'], Gatekeeper_Xp_Pro_Stripe::event_id( $e ) ] );
-    `);
-    assert.deepStrictEqual(res, ['grant', 'monthly', FAMILY, 'evt_1QxCheckoutMonthly']);
-  });
-});
-
 describe('License Stripe: hygiene', () => {
   it('files and fixtures carry no em dashes or synthetic contact data', () => {
-    const files = ['../includes/class-gatekeeper-license-stripe.php', '../includes/class-gatekeeper-xp-pro-stripe.php', 'xp-pro-stripe.test.mjs'];
+    const files = ['../includes/class-gatekeeper-license-stripe.php', 'xp-pro-stripe.test.mjs'];
     for (const f of fs.readdirSync(path.join(HERE, 'fixtures', 'stripe'))) files.push(path.join('fixtures', 'stripe', f));
     for (const rel of files) {
       const file = path.join(HERE, rel);

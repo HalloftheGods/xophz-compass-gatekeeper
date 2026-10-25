@@ -4,8 +4,26 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const BOOTSTRAP = '/var/www/html/wp-content/plugins/xophz-compass-gatekeeper/tests/xp-pro-bootstrap.php';
+const PLUGIN = '/var/www/html/wp-content/plugins/xophz-compass-gatekeeper';
+const INCLUDES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'includes');
+
+/**
+ * require_once lines for the license engine, the license classes and every XP Pro file that exists
+ * (the facade, the db alias and, until it moves to the XP plugin, the AI route).
+ */
+function engineRequires() {
+  const first = ['class-gatekeeper-license-db.php', 'class-gatekeeper-license-products.php', 'class-gatekeeper-license-store.php', 'gatekeeper-license-functions.php'];
+  const rest = fs
+    .readdirSync(INCLUDES)
+    .filter((f) => /^class-gatekeeper-(license|xp-pro)-.*\.php$/.test(f) && !first.includes(f))
+    .sort();
+  return [...first, ...rest].map((f) => `require_once '${PLUGIN}/includes/${f}';`).join('\n');
+}
 
 /** A JS value as a PHP expression: JSON in a nowdoc, decoded to arrays. */
 export function lit(value) {
@@ -34,10 +52,7 @@ export function xp(code) {
  * run against MySQL. The Gatekeeper classes are required if the plugin is not active.
  */
 export function xpWp(code) {
-  const classes = ['db', 'licenses', 'stripe', 'revenuecat', 'intake', 'ai', 'rest'];
-  const requires = classes
-    .map((c) => `require_once '/var/www/html/wp-content/plugins/xophz-compass-gatekeeper/includes/class-gatekeeper-xp-pro-${c}.php';`)
-    .join('\n');
+  const requires = engineRequires();
   const script = `<?php\ndefine('WP_USE_THEMES', false);\nrequire '/var/www/html/wp-load.php';\n${requires}\n${code}`;
   const result = spawnSync('docker', ['exec', '-i', 'u-wordpress', 'php'], { input: script, encoding: 'utf8', timeout: 60000 });
   if (result.status !== 0) {
@@ -56,10 +71,7 @@ export function xpWpParallel(codes) {
     codes.map(
       (code) =>
         new Promise((resolve, reject) => {
-          const classes = ['db', 'licenses', 'stripe', 'revenuecat', 'intake', 'ai', 'rest'];
-          const requires = classes
-            .map((c) => `require_once '/var/www/html/wp-content/plugins/xophz-compass-gatekeeper/includes/class-gatekeeper-xp-pro-${c}.php';`)
-            .join('\n');
+          const requires = engineRequires();
           const script = `<?php\ndefine('WP_USE_THEMES', false);\nrequire '/var/www/html/wp-load.php';\n${requires}\n${code}`;
           const child = spawn('docker', ['exec', '-i', 'u-wordpress', 'php']);
           let out = '';

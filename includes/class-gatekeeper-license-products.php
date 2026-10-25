@@ -155,7 +155,9 @@ class Gatekeeper_License_Products {
 		if ( null === $schema ) {
 			return false;
 		}
-		update_option( $schema['option'], self::cast( $value, $schema['type'], $schema['default'] ), false );
+		$typed = self::cast( $value, $schema['type'], $schema['default'] );
+		// A bool is stored as '1' or '0' (as the option always was): WordPress skips update_option( x, false ) on an option that does not exist yet.
+		update_option( $schema['option'], is_bool( $typed ) ? ( $typed ? '1' : '0' ) : $typed, false );
 		return true;
 	}
 

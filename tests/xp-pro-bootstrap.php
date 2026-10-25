@@ -2,7 +2,7 @@
 /**
  * Bootstrap for the XP Pro specs: the Gatekeeper bootstrap plus the extra WordPress
  * functions and classes the XP Pro code touches (transients, mail, HTTP, REST, errors),
- * all in memory, the license engine, every includes/class-gatekeeper-xp-pro-*.php file that exists,
+ * all in memory, the license engine and classes, every includes/class-gatekeeper-xp-pro-*.php file that exists,
  * and the xp-pro product registered as the XP plugin registers it.
  */
 
@@ -227,13 +227,14 @@ class Gk_Fake_Wpdb {
 }
 $GLOBALS['wpdb'] = new Gk_Fake_Wpdb();
 
-// The license engine first, then every XP Pro file (the facade and alias require the engine too).
+// The license engine first, then every other license class (adapters, intake, REST, setup) and
+// every XP Pro file that exists (the facade and alias require the engine too).
 require_once dirname( __DIR__ ) . '/includes/class-gatekeeper-license-db.php';
 require_once dirname( __DIR__ ) . '/includes/class-gatekeeper-license-products.php';
 require_once dirname( __DIR__ ) . '/includes/class-gatekeeper-license-store.php';
 require_once dirname( __DIR__ ) . '/includes/gatekeeper-license-functions.php';
-foreach ( glob( dirname( __DIR__ ) . '/includes/class-gatekeeper-xp-pro-*.php' ) as $gk_xp_pro_file ) {
-	require_once $gk_xp_pro_file;
+foreach ( array_merge( glob( dirname( __DIR__ ) . '/includes/class-gatekeeper-license-*.php' ), glob( dirname( __DIR__ ) . '/includes/class-gatekeeper-xp-pro-*.php' ) ) as $gk_license_file ) {
+	require_once $gk_license_file;
 }
 
 /*

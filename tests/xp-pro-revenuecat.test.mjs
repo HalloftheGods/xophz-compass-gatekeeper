@@ -280,20 +280,9 @@ describe('License RevenueCat: a second product', () => {
   });
 });
 
-describe('License RevenueCat: the XP Pro wrapper', () => {
-  it('Gatekeeper_Xp_Pro_RevenueCat keeps its old signature and answers with the xp-pro product', () => {
-    const res = xp(`
-      $p  = ${lit(fixture('renewal-yearly'))};
-      $op = Gatekeeper_Xp_Pro_RevenueCat::to_op( $p );
-      echo json_encode( [ $op['action'], $op['plan'], $op['family_id'], Gatekeeper_Xp_Pro_RevenueCat::event_id( $p ) ] );
-    `);
-    assert.deepStrictEqual(res, ['grant', 'yearly', FAMILY, 'rc-evt-0003']);
-  });
-});
-
 describe('License RevenueCat: hygiene', () => {
   it('files and fixtures carry no em dashes or synthetic contact data', () => {
-    const files = ['../includes/class-gatekeeper-license-revenuecat.php', '../includes/class-gatekeeper-xp-pro-revenuecat.php', 'xp-pro-revenuecat.test.mjs'];
+    const files = ['../includes/class-gatekeeper-license-revenuecat.php', 'xp-pro-revenuecat.test.mjs'];
     for (const f of fs.readdirSync(path.join(HERE, 'fixtures', 'revenuecat'))) files.push(path.join('fixtures', 'revenuecat', f));
     for (const rel of files) {
       const file = path.join(HERE, rel);

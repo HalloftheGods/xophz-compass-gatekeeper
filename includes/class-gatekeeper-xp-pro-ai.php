@@ -31,7 +31,7 @@ class Gatekeeper_Xp_Pro_AI {
 
 	/** Route handler for POST /xp-pro/ai. */
 	public static function handle( WP_REST_Request $request ): WP_REST_Response {
-		if ( Gatekeeper_Xp_Pro_REST::rate_limited( 'ai', Gatekeeper_Xp_Pro_REST::PER_MINUTE, 60, $request ) ) {
+		if ( gatekeeper_rate_limited( 'xp_pro_ai', Gatekeeper_License_REST::PER_MINUTE, 60, $request ) ) {
 			return self::error( 'rate_limited', 429 );
 		}
 
