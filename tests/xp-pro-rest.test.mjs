@@ -387,7 +387,7 @@ const ROUTES = `
 `;
 
 describe('License REST: wiring', () => {
-  it('XP Pro keeps its route list: six public routes and the admin-only setup routes', () => {
+  it('XP Pro keeps its route list: five public routes here, the AI route in the XP plugin, and the admin-only setup routes', () => {
     const res = run(`
       ${ROUTES}
       Gatekeeper_License_REST::register( 'compass/v1/gatekeeper' );
@@ -400,22 +400,21 @@ describe('License REST: wiring', () => {
       [NS, '/xp-pro/validate', 'POST', '__return_true'],
       [NS, '/xp-pro/recover', 'POST', '__return_true'],
       [NS, '/xp-pro/manage', 'POST', '__return_true'],
-      [NS, '/xp-pro/ai', 'POST', '__return_true'],
       [NS, '/xp-pro/setup/stripe-webhook', 'POST', 'Gatekeeper_License_Setup::is_admin'],
       [NS, '/xp-pro/settings', 'GET', 'Gatekeeper_License_Setup::is_admin'],
       [NS, '/xp-pro/settings', 'POST', 'Gatekeeper_License_Setup::is_admin'],
     ]);
   });
 
-  it('the AI route steps aside when the XP plugin ships its own', () => {
+  it('no AI route is registered here: the XP plugin serves /xp-pro/ai', () => {
     const res = run(`
       ${ROUTES}
-      class Xophz_Compass_Xp_Pro_AI {}
       Gatekeeper_License_REST::register( 'compass/v1/gatekeeper' );
-      echo json_encode( array_map( fn ( $r ) => $r[1], $GLOBALS['routes'] ) );
+      echo json_encode( [ class_exists( 'Gatekeeper_Xp_Pro_AI' ), array_map( fn ( $r ) => $r[1], $GLOBALS['routes'] ) ] );
     `);
-    assert.ok(!res.includes('/xp-pro/ai'));
-    assert.strictEqual(res.length, 8);
+    assert.strictEqual(res[0], false);
+    assert.ok(!res[1].some((path) => path.endsWith('/ai')));
+    assert.strictEqual(res[1].length, 8);
   });
 
   it("a second product's routes appear under its own prefix", () => {
@@ -427,7 +426,7 @@ describe('License REST: wiring', () => {
     `);
     assert.deepStrictEqual(res, [
       ['/xp-pro/plans', 'GET', '__return_true'], ['/xp-pro/claim', 'POST', '__return_true'], ['/xp-pro/validate', 'POST', '__return_true'],
-      ['/xp-pro/recover', 'POST', '__return_true'], ['/xp-pro/manage', 'POST', '__return_true'], ['/xp-pro/ai', 'POST', '__return_true'],
+      ['/xp-pro/recover', 'POST', '__return_true'], ['/xp-pro/manage', 'POST', '__return_true'],
       ['/acme/plans', 'GET', '__return_true'], ['/acme/claim', 'POST', '__return_true'], ['/acme/validate', 'POST', '__return_true'],
       ['/acme/recover', 'POST', '__return_true'], ['/acme/manage', 'POST', '__return_true'],
       ['/xp-pro/setup/stripe-webhook', 'POST', 'Gatekeeper_License_Setup::is_admin'], ['/xp-pro/settings', 'GET', 'Gatekeeper_License_Setup::is_admin'], ['/xp-pro/settings', 'POST', 'Gatekeeper_License_Setup::is_admin'],

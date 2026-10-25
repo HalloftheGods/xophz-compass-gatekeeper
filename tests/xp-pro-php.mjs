@@ -14,7 +14,7 @@ const INCLUDES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 
 /**
  * require_once lines for the license engine, the license classes and every XP Pro file that exists
- * (the facade, the db alias and, until it moves to the XP plugin, the AI route).
+ * (the facade, the db alias and the intake shim).
  */
 function engineRequires() {
   const first = ['class-gatekeeper-license-db.php', 'class-gatekeeper-license-products.php', 'class-gatekeeper-license-store.php', 'gatekeeper-license-functions.php'];

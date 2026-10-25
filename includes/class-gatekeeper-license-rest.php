@@ -7,7 +7,7 @@
  * For each product in Gatekeeper_License_Products the routes live at
  * /compass/v1/gatekeeper/{route_prefix}/plans|claim|validate|recover|manage. The request and JSON
  * field names come from the product's account_param and device_param. Rate limit buckets are
- * per product: "{product}_{route}".
+ * per product: "{product}_{route}". The XP plugin serves /xp-pro/ai itself.
  *
  * @package Xophz_Compass_Gatekeeper
  */
@@ -53,29 +53,6 @@ class Gatekeeper_License_REST {
 				)
 			);
 		}
-		self::register_transitional_ai( $namespace, $product );
-	}
-
-	/**
-	 * The AI helpers route is moving to the XP plugin (Xophz_Compass_Xp_Pro_AI serves
-	 * /xp-pro/ai there). Until it does, Gatekeeper's copy keeps the route alive; it steps aside the
-	 * moment the XP plugin's class exists, and goes away with includes/class-gatekeeper-xp-pro-ai.php.
-	 */
-	private static function register_transitional_ai( string $namespace, array $product ): void {
-		if ( 'xp-pro' !== $product['id'] || ! class_exists( 'Gatekeeper_Xp_Pro_AI' ) || class_exists( 'Xophz_Compass_Xp_Pro_AI' ) ) {
-			return;
-		}
-		register_rest_route(
-			$namespace,
-			'/' . $product['route_prefix'] . '/ai',
-			array(
-				array(
-					'methods'             => WP_REST_Server::CREATABLE,
-					'callback'            => array( 'Gatekeeper_Xp_Pro_AI', 'handle' ),
-					'permission_callback' => '__return_true',
-				),
-			)
-		);
 	}
 
 	/** The rate limit bucket of one route of one product: "{product}_{route}", dashes as underscores. */
