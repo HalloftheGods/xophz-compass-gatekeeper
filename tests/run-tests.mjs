@@ -7,6 +7,7 @@ import './licenses.test.mjs';
 import './hookshot-fulfilment.test.mjs';
 import './xp-pro-licenses.test.mjs';
 import './xp-pro-db.test.mjs';
+import './license-products.test.mjs';
 import './xp-pro-stripe.test.mjs';
 import './xp-pro-revenuecat.test.mjs';
 import './xp-pro-intake.test.mjs';

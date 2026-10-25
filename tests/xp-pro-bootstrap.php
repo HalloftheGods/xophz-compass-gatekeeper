@@ -2,7 +2,8 @@
 /**
  * Bootstrap for the XP Pro specs: the Gatekeeper bootstrap plus the extra WordPress
  * functions and classes the XP Pro code touches (transients, mail, HTTP, REST, errors),
- * all in memory, and every includes/class-gatekeeper-xp-pro-*.php file that exists.
+ * all in memory, the license engine, every includes/class-gatekeeper-xp-pro-*.php file that exists,
+ * and the xp-pro product registered as the XP plugin registers it.
  */
 
 require __DIR__ . '/bootstrap.php';
@@ -226,6 +227,75 @@ class Gk_Fake_Wpdb {
 }
 $GLOBALS['wpdb'] = new Gk_Fake_Wpdb();
 
+// The license engine first, then every XP Pro file (the facade and alias require the engine too).
+require_once dirname( __DIR__ ) . '/includes/class-gatekeeper-license-db.php';
+require_once dirname( __DIR__ ) . '/includes/class-gatekeeper-license-products.php';
+require_once dirname( __DIR__ ) . '/includes/class-gatekeeper-license-store.php';
+require_once dirname( __DIR__ ) . '/includes/gatekeeper-license-functions.php';
 foreach ( glob( dirname( __DIR__ ) . '/includes/class-gatekeeper-xp-pro-*.php' ) as $gk_xp_pro_file ) {
 	require_once $gk_xp_pro_file;
 }
+
+/*
+ * License products for the specs. A plugin registers its product on the gatekeeper_license_products
+ * filter; here gk_register_license_product() does the same through the single-callback filter stub,
+ * and $GLOBALS['gk_license_products'] = array() unregisters everything (to see the transition default).
+ */
+$GLOBALS['gk_filters']          = $GLOBALS['gk_filters'] ?? array();
+$GLOBALS['gk_license_products'] = array();
+$GLOBALS['gk_filters']['gatekeeper_license_products'] = function ( $products ) {
+	return array_merge( is_array( $products ) ? $products : array(), $GLOBALS['gk_license_products'] );
+};
+function gk_register_license_product( string $id, array $config ): void {
+	$GLOBALS['gk_license_products'][ $id ] = $config;
+	Gatekeeper_License_Products::reset();
+}
+
+/**
+ * The xp-pro product exactly as the XP plugin registers it (board epic #1552 carries this array).
+ * The XP plugin passes 'plans' => array( 'Xophz_Compass_Xp_Pro', 'get_plans' ); here that catalog is
+ * gk_xp_pro_plans(), which a spec may override through the legacy gatekeeper_xp_pro_plans filter stub.
+ */
+function gk_xp_pro_product(): array {
+	return array(
+		'label'               => 'XP Pro',
+		'app_name'            => 'Do It For The XP',
+		'key_prefix'          => 'XP-PRO-',
+		'key_groups'          => 3,
+		'option_prefix'       => 'gk_xp_pro_',
+		'account_param'       => 'family_id',
+		'device_param'        => 'device_id',
+		'max_devices'         => 10,
+		'grace_seconds'       => 259200,
+		'trial_seconds'       => 604800,
+		'plans'               => 'gk_xp_pro_plans',
+		'checkout_product'    => 'doitforthexp',
+		'webhooks_option'     => 'gatekeeper_xp_pro_webhooks',
+		'stripe_setup_option' => 'gatekeeper_xp_pro_stripe_setup',
+		'route_prefix'        => 'xp-pro',
+		'settings'            => array(
+			'ai_daily_limit'   => array( 'label' => 'AI requests per family per day', 'type' => 'int', 'option' => 'xp_pro_ai_daily_limit', 'default' => 100 ),
+			'lifetime_on_sale' => array( 'label' => 'Lifetime plan on sale', 'type' => 'bool', 'option' => 'xp_pro_lifetime_on_sale', 'default' => true ),
+		),
+		'strings'             => array(
+			'key_email_subject' => 'Your XP Pro key',
+			'support_line'      => 'Questions? Write to {support_email}.',
+		),
+	);
+}
+/** Xophz_Compass_Xp_Pro::get_plans() as the XP plugin ships it; the legacy filter stub wins when a spec sets it. */
+function gk_xp_pro_plans(): array {
+	$override = apply_filters( 'gatekeeper_xp_pro_plans', array() );
+	if ( is_array( $override ) && ! empty( $override ) ) {
+		return $override;
+	}
+	$stored  = get_option( 'xp_pro_lifetime_on_sale', true );
+	$parsed  = is_bool( $stored ) ? $stored : filter_var( $stored, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+	$on_sale = null === $parsed ? true : $parsed;
+	return array(
+		'monthly'  => array( 'price' => 4.99, 'mode' => 'subscription', 'interval' => 'month', 'trial_days' => 7, 'store_product_id' => 'xp_pro_monthly', 'on_sale' => true ),
+		'yearly'   => array( 'price' => 39.99, 'mode' => 'subscription', 'interval' => 'year', 'trial_days' => 7, 'store_product_id' => 'xp_pro_yearly', 'on_sale' => true ),
+		'lifetime' => array( 'price' => 79.00, 'mode' => 'payment', 'interval' => null, 'trial_days' => 0, 'store_product_id' => 'xp_pro_lifetime', 'on_sale' => (bool) $on_sale ),
+	);
+}
+gk_register_license_product( 'xp-pro', gk_xp_pro_product() );
