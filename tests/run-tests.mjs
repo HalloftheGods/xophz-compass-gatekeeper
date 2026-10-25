@@ -8,6 +8,7 @@ import './hookshot-fulfilment.test.mjs';
 import './xp-pro-licenses.test.mjs';
 import './xp-pro-db.test.mjs';
 import './license-products.test.mjs';
+import './admin-render.test.mjs';
 import './xp-pro-stripe.test.mjs';
 import './xp-pro-revenuecat.test.mjs';
 import './xp-pro-intake.test.mjs';
