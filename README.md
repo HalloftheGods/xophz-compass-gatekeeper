@@ -13,6 +13,7 @@
 
 - **Machine-to-Machine (M2M) API Keys**: Mint and validate cryptographically secure API keys with customizable prefixes (defaulting to `stargate_`) for CLI tools, AI agents, and external microservices.
 - **Chemical X Software Licensing**: Cryptographic issuance and validation for flat-rate eBook licenses (`CX-ST-`), GitHub Sponsor monthly licenses (`CX-SP-`), and Team Power Puff unlimited seats (`CX-VIP-`).
+- **License products**: a license engine other plugins register into (see "License products" below). Keys, records, devices, Stripe and RevenueCat intake, the public REST routes and the admin list are Gatekeeper's; each product's names, plans, strings and rules stay in the plugin that registers it. XP Pro (Do It For The XP) is the first product and now lives in `xophz-compass-xp`.
 - **SaaS Entitlement Bridge**: Integrates with `xophz-compass-hookshot` to automatically process GitHub Sponsors webhooks and provision immediate developer entitlements.
 - **AI Agent Self-Discovery**: Exposes OpenAPI / JSON Schema ability definitions so AI coding assistants can discover and call endpoints cleanly.
 
@@ -47,16 +48,40 @@ All endpoints are exposed under the namespace `compass/v1/gatekeeper`:
 | `DELETE` | `/compass/v1/gatekeeper/keys/{id}` | Revoke an active key | Admin |
 | `POST` | `/compass/v1/gatekeeper/sponsors/sync` | Sync sponsor status from Hookshot webhook bridge | Admin / Bridge |
 | `GET` | `/compass/v1/gatekeeper/schema` | Machine abilities schema for AI agents | Public |
-| `GET` | `/compass/v1/gatekeeper/xp-pro/plans` | XP Pro plan catalog with `on_sale` flags (filled by the XP plugin through `gatekeeper_xp_pro_plans`) | Public |
-| `POST` | `/compass/v1/gatekeeper/xp-pro/claim` | `{family_id, device_id}`: the family's XP Pro license, and registers the device. 404 `{pro:false}` until a purchase arrives, 409 `device_limit` on an 11th device | Public, 30/min |
-| `POST` | `/compass/v1/gatekeeper/xp-pro/validate` | `{license_key, device_id}`: same shape plus `family_id`, for restoring on a new device | Public, 30/min |
-| `POST` | `/compass/v1/gatekeeper/xp-pro/recover` | `{email}`: emails every key on file for that address. Always 202 for a well-formed address | Public, 5/hour |
-| `POST` | `/compass/v1/gatekeeper/xp-pro/manage` | `{license_key, return_url}`: a Stripe Billing Portal `{url}` or the `{store}` to open | Public, 30/min |
-| `POST` | `/compass/v1/gatekeeper/xp-pro/ai` | `{license_key, device_id, task, input}`: the Gemini helpers for XP Pro families. `task` is `monster_name`, `checklist`, `full_beast` or `schedule`; 402 `pro_required`, 400 `invalid_input`, 429 `daily_limit` (100 a day per license, option `xp_pro_ai_daily_limit`) or `rate_limited`, 502 `ai_unavailable` | Public, license-checked |
+| `GET` | `/compass/v1/gatekeeper/{route_prefix}/plans` | A license product's plan catalog with `on_sale` flags (the product's `plans` callable). For XP Pro: `/xp-pro/plans` | Public |
+| `POST` | `/compass/v1/gatekeeper/{route_prefix}/claim` | `{<account_param>, <device_param>}`: the account's license, and registers the device. For XP Pro `{family_id, device_id}`. 404 `{pro:false}` until a purchase arrives, 409 `device_limit` past the product's device cap (10 for XP Pro) | Public, 30/min |
+| `POST` | `/compass/v1/gatekeeper/{route_prefix}/validate` | `{license_key, <device_param>}`: same shape plus the account field, for restoring on a new device | Public, 30/min |
+| `POST` | `/compass/v1/gatekeeper/{route_prefix}/recover` | `{email}`: emails every key on file for that address. Always 202 for a well-formed address | Public, 5/hour |
+| `POST` | `/compass/v1/gatekeeper/{route_prefix}/manage` | `{license_key, return_url}`: a Stripe Billing Portal `{url}` or the `{store}` to open | Public, 30/min |
+| `POST` | `/compass/v1/gatekeeper/{route_prefix}/setup/stripe-webhook` | `{mode: test\|live, rotate?}`: creates and registers the product's Stripe webhook, keeping the signing secret server side | Admin |
+| `GET`/`POST` | `/compass/v1/gatekeeper/{route_prefix}/settings` | The product's webhook ids and its own settings (from its settings schema) | Admin |
 
-### XP Pro
+The XP Pro AI helpers route (`POST /xp-pro/ai`, the Gemini proxy) is no longer Gatekeeper's: the XP plugin (`xophz-compass-xp`) registers it and checks the key with `gatekeeper_license_for_key()`.
 
-XP Pro licenses (`XP-PRO-XXXX-XXXX-XXXX`) are per family, not per user, and live in their own options (`gk_xp_pro_{family_id}` plus lookup options). They never pass through `licenses/validate`. Stripe and RevenueCat events arrive through Hookshot (`xophz_hookshot_incoming`) and count only on the two webhook ids saved in Settings > Gatekeeper XP Pro whose request Hookshot verified. The AI helpers endpoint takes only a task name and that task's structured fields (strings capped at 200 characters, lists at 20 items); the prompts live in `class-gatekeeper-xp-pro-ai.php` and the Gemini key stays on the server. The Settings page also holds the AI daily limit and lists the licenses, with a Reset devices button per row.
+### License products
+
+Gatekeeper is the license engine; a plugin adds a product by filtering `gatekeeper_license_products` (this is the XP plugin's registration, shortened):
+
+```php
+add_filter( 'gatekeeper_license_products', function ( array $products ): array {
+    $products['xp-pro'] = array(
+        'label' => 'XP Pro', 'app_name' => 'Do It For The XP',
+        'key_prefix' => 'XP-PRO-', 'option_prefix' => 'gk_xp_pro_',
+        'account_param' => 'family_id', 'device_param' => 'device_id', 'max_devices' => 10,
+        'plans' => array( 'Xophz_Compass_Xp_Pro', 'get_plans' ), 'route_prefix' => 'xp-pro',
+        'settings' => array( 'ai_daily_limit' => array( 'label' => 'AI requests per family per day', 'type' => 'int', 'option' => 'xp_pro_ai_daily_limit', 'default' => 100 ) ),
+    );
+    return $products;
+} );
+```
+
+`Gatekeeper_License_Products` validates each config, fills the defaults (key alphabet, `gk_lic_{product}_` option prefix, a uuid4 account validator, a device id validator, 3 day grace, 7 day trial, webhook and Stripe setup option names, the email strings built from `app_name`), writes one `error_log` line for a malformed config and skips that product, never fatals. An int setting row may carry whole-number `min` and `max`. A product's records live in `{option_prefix}{account}` plus lookup options, never in `compass_gatekeeper_licenses`, and never pass through `licenses/validate`.
+
+- **Engine classes**: `Gatekeeper_License_Products` (registry), `Gatekeeper_License_Store` (records, keys, devices, entitlement; every method takes the product id first), `Gatekeeper_License_Db` (named locks, atomic counters, rate limiting, daily counter cleanup), `Gatekeeper_License_Stripe` and `Gatekeeper_License_RevenueCat` (a webhook payload to one license operation), `Gatekeeper_License_Intake` (Hookshot: the webhook id picks the product and adapter, only a request `Hookshot_Signature::was_verified()` counts, a new key is emailed once), `Gatekeeper_License_REST` and `Gatekeeper_License_Setup` (the routes above).
+- **Helper functions** (consumers guard with `function_exists`): `gatekeeper_license_record( $product, $account )`, `gatekeeper_license_entitled( $product, $account, $now = null )`, `gatekeeper_license_for_key( $product, $key, $device )` (the record, or a `WP_Error`: 400 `invalid_input`, 404 `not_found`, 402 `pro_required`, 409 `device_limit`; a new device attaches when there is room), `gatekeeper_counter_bump( $name, $ttl, $delta = 1 )` and `gatekeeper_rate_limited( $bucket, $max, $window, $request, $scope )`.
+- **Hooks**: `do_action( 'gatekeeper_license_applied', $product, $op, $result )` after a webhook changes a record; `apply_filters( 'gatekeeper_license_public_view', $view, $record, $product )` on the JSON a client sees.
+- **Admin**: Settings > Gatekeeper Licenses (slug `gatekeeper-xp-pro`, so the old link still lands) has one section per product: webhook ids, the settings form drawn from the schema, and the license list (key, plan, status, expires, env, email, devices, last event) with Reset devices, Restore and Update.
+- **Transition**: until the XP plugin registers `xp-pro`, Gatekeeper registers a built-in `xp-pro` (plans through the old `gatekeeper_xp_pro_plans` filter, or the shipped catalog) and logs one line per request saying so. `Gatekeeper_Xp_Pro_Licenses` stays for one release as a facade over the store for `xp-pro`, and `Gatekeeper_Xp_Pro_Db` as an alias of `Gatekeeper_License_Db`. Both go in the release after the XP plugin ships.
 
 ### License validation
 
