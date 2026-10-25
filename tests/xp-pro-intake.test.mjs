@@ -358,7 +358,7 @@ describe('XP Pro admin settings', () => {
 
 describe('License intake: hygiene', () => {
   it('files carry no em dashes', () => {
-    for (const rel of ['../includes/class-gatekeeper-license-intake.php', '../includes/class-gatekeeper-xp-pro-intake.php', '../admin/class-xophz-compass-gatekeeper-admin.php', 'xp-pro-intake.test.mjs']) {
+    for (const rel of ['../includes/class-gatekeeper-license-intake.php', '../admin/class-xophz-compass-gatekeeper-admin.php', 'xp-pro-intake.test.mjs']) {
       assertNoEmDashes(fs.readFileSync(path.join(HERE, rel), 'utf8'), rel);
     }
   });

@@ -43,10 +43,9 @@ require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-intake.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-setup.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-rest.php';
-// XP Pro: the facade and alias (one release) and the intake shim.
+// XP Pro: the facade and alias (one release).
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-db.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-licenses.php';
-require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-intake.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-rest.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'admin/class-xophz-compass-gatekeeper-admin.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-xophz-compass-gatekeeper.php';
