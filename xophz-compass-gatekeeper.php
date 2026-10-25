@@ -32,6 +32,12 @@ require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-keys.php
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-licenses.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-entitlements.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-route-guard.php';
+// The license engine: product registry, shared db primitives, the per-product store and the helper functions.
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-db.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-products.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-store.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/gatekeeper-license-functions.php';
+// XP Pro: the facade and alias (one release), then the adapters, intake, AI, setup and REST.
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-db.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-licenses.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-stripe.php';
