@@ -32,14 +32,20 @@ require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-keys.php
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-licenses.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-entitlements.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-route-guard.php';
+// The license engine: product registry, shared db primitives, the per-product store and the helper functions.
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-db.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-products.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-store.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/gatekeeper-license-functions.php';
+// The Stripe and RevenueCat adapters, the webhook intake, the per-product REST routes and the setup API.
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-stripe.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-revenuecat.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-intake.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-setup.php';
+require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-license-rest.php';
+// XP Pro: the facade and alias (one release).
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-db.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-licenses.php';
-require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-stripe.php';
-require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-revenuecat.php';
-require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-intake.php';
-require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-ai.php';
-require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-setup.php';
-require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-xp-pro-rest.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-gatekeeper-rest.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'admin/class-xophz-compass-gatekeeper-admin.php';
 require_once XOPHZ_COMPASS_GATEKEEPER_PATH . 'includes/class-xophz-compass-gatekeeper.php';

@@ -1,9 +1,24 @@
 <?php
 /**
- * Stripe adapter for XP Pro: turns a Stripe event into one license operation.
+ * Stripe adapter for Gatekeeper license products: turns a Stripe event into one license operation.
  *
- * Pure: an event goes in, an operation comes out, and nothing is read or written.
- * The operation shape is the one Gatekeeper_Xp_Pro_Licenses::apply() takes.
+ * Pure: an event and a product config go in, an operation comes out, and nothing is read or
+ * written. Everything product specific comes from the product array (see Gatekeeper_License_Products):
+ *
+ *   checkout_product   the Stripe metadata.product a checkout must carry; any other checkout is none
+ *   plans              the plan catalog keyed by plan id (a callable returning it, or the array);
+ *                      metadata.plan must be one of its keys, and the plan whose mode is payment
+ *                      is the lifetime plan (no expiry)
+ *   account_param      the metadata field that carries the account id (default family_id)
+ *   account_validator  callable(string): bool for that id (default: lowercase uuid4)
+ *   trial_seconds      the trial window when the session carries no subscription period
+ *
+ * Invoices, subscription endings, refunds and disputes carry no product: they name a Stripe
+ * reference, and the store looks it up among that product's own records, so a reference that
+ * belongs to another product matches nothing.
+ *
+ * The operation shape is the one Gatekeeper_Xp_Pro_Licenses::apply() takes; it still names the
+ * account `family_id`.
  *
  * @package Xophz_Compass_Gatekeeper
  */
@@ -12,11 +27,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Gatekeeper_Xp_Pro_Stripe {
+class Gatekeeper_License_Stripe {
 
-	const PRODUCT      = 'doitforthexp';
-	const PLANS        = array( 'monthly', 'yearly', 'lifetime' );
-	const TRIAL_SECONDS = 604800; // 7 days.
+	const DEFAULT_ACCOUNT_PARAM  = 'family_id';
+	const DEFAULT_TRIAL_SECONDS  = 604800; // 7 days.
+	const UUID4_PATTERN          = '/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/';
 
 	public static function event_id( array $event ): string {
 		$id = $event['id'] ?? '';
@@ -24,9 +39,10 @@ class Gatekeeper_Xp_Pro_Stripe {
 	}
 
 	/**
-	 * @param int|null $now Unix time, for the trial window; defaults to time().
+	 * @param array    $product The product config (checkout_product, plans, account_param, account_validator, trial_seconds).
+	 * @param int|null $now     Unix time, for the trial window; defaults to time().
 	 */
-	public static function to_op( array $event, ?int $now = null ): array {
+	public static function to_op( array $event, array $product, ?int $now = null ): array {
 		$now    = $now ?? time();
 		$type   = is_string( $event['type'] ?? null ) ? $event['type'] : '';
 		$object = is_array( $event['data']['object'] ?? null ) ? $event['data']['object'] : array();
@@ -35,9 +51,9 @@ class Gatekeeper_Xp_Pro_Stripe {
 		switch ( $type ) {
 			case 'checkout.session.completed':
 			case 'checkout.session.async_payment_succeeded':
-				return self::from_checkout( $object, $env, $now );
+				return self::from_checkout( $object, $product, $env, $now );
 			case 'checkout.session.async_payment_failed':
-				return self::from_failed_payment( $object, $env );
+				return self::from_failed_payment( $object, $product, $env );
 			case 'invoice.paid':
 				return self::from_invoice( $object, $env );
 			case 'customer.subscription.deleted':
@@ -53,9 +69,9 @@ class Gatekeeper_Xp_Pro_Stripe {
 		return self::none();
 	}
 
-	private static function from_checkout( array $session, string $env, int $now ): array {
+	private static function from_checkout( array $session, array $product, string $env, int $now ): array {
 		$meta = is_array( $session['metadata'] ?? null ) ? $session['metadata'] : array();
-		if ( ( $meta['product'] ?? null ) !== self::PRODUCT ) {
+		if ( ! self::is_product_checkout( $meta, $product ) ) {
 			return self::none();
 		}
 
@@ -65,11 +81,11 @@ class Gatekeeper_Xp_Pro_Stripe {
 			return self::none();
 		}
 
-		$plan      = $meta['plan'] ?? null;
-		$family_id = $meta['family_id'] ?? null;
-		$isUsable  = is_string( $plan ) && in_array( $plan, self::PLANS, true )
-			&& is_string( $family_id ) && Gatekeeper_Xp_Pro_Licenses::is_uuid4( $family_id );
-		if ( ! $isUsable ) {
+		$plan_id = $meta['plan'] ?? null;
+		$plans   = self::plans( $product );
+		$plan    = is_string( $plan_id ) ? ( $plans[ $plan_id ] ?? null ) : null;
+		$account = self::account( $meta, $product );
+		if ( null === $plan || null === $account ) {
 			return self::none();
 		}
 
@@ -87,9 +103,9 @@ class Gatekeeper_Xp_Pro_Stripe {
 			'grant',
 			$env,
 			array(
-				'family_id'  => $family_id,
-				'plan'       => $plan,
-				'expires_at' => 'lifetime' === $plan ? null : self::subscription_end( $session['subscription'] ?? null, $now ),
+				'family_id'  => $account,
+				'plan'       => $plan_id,
+				'expires_at' => self::is_lifetime( $plan ) ? null : self::subscription_end( $session['subscription'] ?? null, $product, $now ),
 				'email'      => is_string( $email ) && '' !== $email ? $email : null,
 				'refs'       => $refs,
 			)
@@ -101,9 +117,9 @@ class Gatekeeper_Xp_Pro_Stripe {
 	 * subscription for a subscription session). No customer fallback, so a failed attempt never
 	 * touches another purchase, and a purchase that was never granted matches no record.
 	 */
-	private static function from_failed_payment( array $session, string $env ): array {
+	private static function from_failed_payment( array $session, array $product, string $env ): array {
 		$meta = is_array( $session['metadata'] ?? null ) ? $session['metadata'] : array();
-		if ( ( $meta['product'] ?? null ) !== self::PRODUCT ) {
+		if ( ! self::is_product_checkout( $meta, $product ) ) {
 			return self::none();
 		}
 
@@ -118,8 +134,8 @@ class Gatekeeper_Xp_Pro_Stripe {
 		return self::none();
 	}
 
-	/** trial_end, else current_period_end, from an expanded subscription; else a 7 day trial window. */
-	private static function subscription_end( $subscription, int $now ): int {
+	/** trial_end, else current_period_end, from an expanded subscription; else the product's trial window. */
+	private static function subscription_end( $subscription, array $product, int $now ): int {
 		if ( is_array( $subscription ) ) {
 			$item = $subscription['items']['data'][0] ?? array();
 			foreach ( array( $subscription['trial_end'] ?? null, $subscription['current_period_end'] ?? null, $item['current_period_end'] ?? null ) as $candidate ) {
@@ -128,7 +144,8 @@ class Gatekeeper_Xp_Pro_Stripe {
 				}
 			}
 		}
-		return $now + self::TRIAL_SECONDS;
+		$trial = $product['trial_seconds'] ?? null;
+		return $now + ( is_int( $trial ) && $trial >= 0 ? $trial : self::DEFAULT_TRIAL_SECONDS );
 	}
 
 	private static function from_invoice( array $invoice, string $env ): array {
@@ -161,8 +178,8 @@ class Gatekeeper_Xp_Pro_Stripe {
 			return self::none();
 		}
 
-		$pi  = self::id_of( $charge['payment_intent'] ?? null );
-		$cus = self::id_of( $charge['customer'] ?? null );
+		$pi      = self::id_of( $charge['payment_intent'] ?? null );
+		$cus     = self::id_of( $charge['customer'] ?? null );
 		$cus_ref = null === $cus ? null : array( 'type' => 'cus', 'id' => $cus );
 
 		if ( null !== $pi ) {
@@ -172,6 +189,50 @@ class Gatekeeper_Xp_Pro_Stripe {
 			return self::op( 'revoke', $env, array( 'ref' => $cus_ref ) );
 		}
 		return self::none();
+	}
+
+	/** The checkout belongs to this product: its metadata.product equals a non-empty checkout_product. */
+	private static function is_product_checkout( array $meta, array $product ): bool {
+		$checkout = $product['checkout_product'] ?? null;
+		return is_string( $checkout ) && '' !== $checkout && ( $meta['product'] ?? null ) === $checkout;
+	}
+
+	/** The plan catalog keyed by plan id: the product's plans callable or array, minus anything that is not a plan. */
+	private static function plans( array $product ): array {
+		$plans = $product['plans'] ?? array();
+		if ( is_callable( $plans ) ) {
+			$plans = call_user_func( $plans );
+		}
+		if ( ! is_array( $plans ) ) {
+			return array();
+		}
+		$catalog = array();
+		foreach ( $plans as $id => $plan ) {
+			if ( is_string( $id ) && '' !== $id && is_array( $plan ) ) {
+				$catalog[ $id ] = $plan;
+			}
+		}
+		return $catalog;
+	}
+
+	/** The plan whose mode is payment is the lifetime plan. */
+	private static function is_lifetime( array $plan ): bool {
+		return 'payment' === ( $plan['mode'] ?? null );
+	}
+
+	/** metadata.{account_param} when the product's validator (default: lowercase uuid4) accepts it. */
+	private static function account( array $meta, array $product ): ?string {
+		$param = $product['account_param'] ?? null;
+		$param = is_string( $param ) && '' !== $param ? $param : self::DEFAULT_ACCOUNT_PARAM;
+
+		$account = $meta[ $param ] ?? null;
+		if ( ! is_string( $account ) ) {
+			return null;
+		}
+
+		$validator = $product['account_validator'] ?? null;
+		$isValid   = is_callable( $validator ) ? (bool) call_user_func( $validator, $account ) : 1 === preg_match( self::UUID4_PATTERN, $account );
+		return $isValid ? $account : null;
 	}
 
 	/** A Stripe reference is a string id, or an expanded object that carries one. */
