@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Xophz Gatekeeper
  * Description:       Universal authentication, API key authority, and machine-to-machine gating for COMPASS and YouMeOS.
- * Version:           26.10.25-1087
+ * Version:           26.10.26
  * Author:            Hall of the Gods, Inc.
  * Category:          Castle Walls
  * Group:             Security / Identity
@@ -16,7 +16,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-define( 'XOPHZ_COMPASS_GATEKEEPER_VERSION', '26.10.25-1087' );
+define( 'XOPHZ_COMPASS_GATEKEEPER_VERSION', '26.10.26' );
 define( 'XOPHZ_COMPASS_GATEKEEPER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'XOPHZ_COMPASS_GATEKEEPER_URL', plugin_dir_url( __FILE__ ) );
 
