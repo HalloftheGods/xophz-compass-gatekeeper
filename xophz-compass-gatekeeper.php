@@ -3,7 +3,8 @@
  * Plugin Name:       Xophz Gatekeeper
  * Description:       Universal authentication, API key authority, and machine-to-machine gating for COMPASS and YouMeOS.
  * Version:           26.10.26
- * Author:            Hall of the Gods, Inc.
+ * Author:            My Compass Consulting
+ * Author URI:        https://mycompassconsulting.com/
  * Category:          Castle Walls
  * Group:             Security / Identity
  * Text Domain:       xophz-compass-gatekeeper
